@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Voice Login - SAS{% endblock %}
+
+{% block content %}
+<h2>Login with Voice</h2>
+
+{% if error %}
+<div class="error" role="alert" aria-live="assertive">{{ error }}</div>
+{% endif %}
+
+{% if not challenge_id %}
+<!-- Step 1: Enter username/email -->
+<p class="description">
+  Enter your username or email to start voice authentication.
+  You'll then speak your semantic secret to log in.
+</p>
+
+<form method="post" action="{{ url_for('voice_login_init') }}">
+  <label for="identifier">Username or Email</label>
+  <input
+    type="text"
+    id="identifier"
+    name="identifier"
+    required
+    aria-required="true"
+    autocomplete="username"
+    autofocus
+  />
+  <button type="submit">Continue</button>
+</form>
+
+{% else %}
+<!-- Step 2: Speak response -->
+<p class="description">{{ prompt }}</p>
+
+<!-- TTS Button for blind users -->
+<div class="tts-section" role="region" aria-label="Text-to-speech controls">
+  <button type="button" id="playPromptBtn" class="btn-tts" aria-label="Listen to prompt">
+    🔊 Listen to Prompt
+  </button>
+  <audio id="ttsAudio" style="display: none;"></audio>
+</div>
+
+<form method="post" action="{{ url_for('voice_login_complete') }}" enctype="multipart/form-data">
+  <input type="hidden" name="challenge_id" value="{{ challenge_id }}" />
+
+  <div class="voice-controls">
+    <!-- Audio recording -->
+    <div class="record-section">
+      <button type="button" id="recordBtn" class="btn-record" aria-label="Start recording">
+        Start Recording
+      </button>
+      <span id="recordingStatus" aria-live="polite"></span>
+      <audio id="audioPlayback" controls style="display: none;"></audio>
+    </div>
+
+    <!-- File upload fallback -->
+    <div class="upload-section">
+      <label for="audioFile">Or upload an audio file:</label>
+      <input
+        type="file"
+        id="audioFile"
+        name="file"
+        accept="audio/*"
+      />
+    </div>
+  </div>
+
+  <button type="submit">Verify</button>
+</form>
+{% endif %}
+
+<script>
+// TTS playback for blind users
+const playPromptBtn = document.getElementById('playPromptBtn');
+const ttsAudio = document.getElementById('ttsAudio');
+
+if (playPromptBtn) {
+  playPromptBtn.addEventListener('click', async () => {
+    const challengeId = '{{ challenge_id }}';
+    playPromptBtn.textContent = '⏳ Loading...';
+    playPromptBtn.disabled = true;
+
+    try {
+      const response = await fetch(`/auth/tts/prompt/${challengeId}`);
+      if (response.ok) {
+        const blob = await response.blob();
+        ttsAudio.src = URL.createObjectURL(blob);
+        ttsAudio.play();
+        playPromptBtn.textContent = '🔊 Playing...';
+        ttsAudio.onended = () => {
+          playPromptBtn.textContent = '🔊 Listen Again';
+          playPromptBtn.disabled = false;
+        };
+      } else {
+        playPromptBtn.textContent = '❌ TTS Unavailable';
+      }
+    } catch (err) {
+      playPromptBtn.textContent = '❌ Error';
+      console.error('TTS error:', err);
+    }
+  });
+}
+
+// Voice recording functionality
+let mediaRecorder;
+let audioChunks = [];
+const recordBtn = document.getElementById('recordBtn');
+const recordingStatus = document.getElementById('recordingStatus');
+const audioPlayback = document.getElementById('audioPlayback');
+const audioFileInput = document.getElementById('audioFile');
+
+if (recordBtn) {
+  recordBtn.addEventListener('click', async () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      recordBtn.textContent = 'Start Recording';
+      recordBtn.classList.remove('recording');
+      recordingStatus.textContent = 'Processing...';
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          audioPlayback.src = audioUrl;
+          audioPlayback.style.display = 'block';
+          recordingStatus.textContent = 'Recording saved.';
+
+          const file = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          audioFileInput.files = dataTransfer.files;
+        };
+
+        mediaRecorder.start();
+        recordBtn.textContent = 'Stop Recording';
+        recordBtn.classList.add('recording');
+        recordingStatus.textContent = 'Recording... Speak now.';
+      } catch (err) {
+        recordingStatus.textContent = 'Error: Could not access microphone.';
+        console.error('Microphone error:', err);
+      }
+    }
+  });
+}
+</script>
+{% endblock %}

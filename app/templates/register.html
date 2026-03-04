@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Semantic Authentication System{% endblock %}
+
+{% block content %}
+  <h2>Register</h2>
+  {% if error %}
+    <div role="alert" class="error">
+      {{ error }}
+    </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('register_submit') }}">
+    <div>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" required />
+    </div>
+    <div>
+      <label for="email">Email (optional)</label>
+      <input id="email" name="email" type="email" />
+    </div>
+    <div>
+      <label for="password">Password (optional)</label>
+      <input id="password" name="password" type="password" />
+      <p id="password-help">
+        A traditional password can be used as a baseline factor, but the semantic secret is still required.
+      </p>
+    </div>
+    <div>
+      <label for="secret_text">
+        Secret idea (semantic secret)
+      </label>
+      <textarea
+        id="secret_text"
+        name="secret_text"
+        rows="4"
+        aria-describedby="secret-help"
+        required
+      ></textarea>
+      <p id="secret-help">
+        Describe a phrase or idea that is personally meaningful to you.
+        Later, you will log in by expressing this idea in your own words (paraphrase, analogy, description, or even another language).
+      </p>
+    </div>
+    <button type="submit">Create account</button>
+  </form>
+{% endblock %}
+

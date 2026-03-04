@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+sqlmodel
+pydantic-settings
+python-dotenv
+jinja2
+groq
+sentence-transformers
+python-multipart
+cryptography
+bcrypt>=4.0.0
+python-jose[cryptography]
+httpx
+pytest

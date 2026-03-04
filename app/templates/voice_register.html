@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Voice Registration - SAS{% endblock %}
+
+{% block content %}
+<h2>Register with Voice</h2>
+<p class="description">
+  Speak your semantic secret phrase. This is ideal for blind users who prefer voice interaction.
+  Your voice will be transcribed and used as your authentication secret.
+</p>
+
+{% if error %}
+<div class="error" role="alert" aria-live="assertive">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('voice_register_submit') }}" enctype="multipart/form-data">
+  <fieldset>
+    <legend>Account Information</legend>
+    
+    <label for="username">Username (required)</label>
+    <input
+      type="text"
+      id="username"
+      name="username"
+      required
+      aria-required="true"
+      autocomplete="username"
+    />
+
+    <label for="email">Email (optional)</label>
+    <input
+      type="email"
+      id="email"
+      name="email"
+      autocomplete="email"
+    />
+
+    <label for="password">Password (optional backup)</label>
+    <input
+      type="password"
+      id="password"
+      name="password"
+      autocomplete="new-password"
+    />
+  </fieldset>
+
+  <fieldset>
+    <legend>Voice Secret</legend>
+    
+    <div class="voice-controls">
+      <p>Record or upload an audio file with your semantic secret phrase.</p>
+      
+      <!-- Audio recording -->
+      <div class="record-section">
+        <button type="button" id="recordBtn" class="btn-record" aria-label="Start recording">
+          Start Recording
+        </button>
+        <span id="recordingStatus" aria-live="polite"></span>
+        <audio id="audioPlayback" controls style="display: none;"></audio>
+      </div>
+
+      <!-- File upload fallback -->
+      <div class="upload-section">
+        <label for="audioFile">Or upload an audio file (WAV, MP3, M4A):</label>
+        <input
+          type="file"
+          id="audioFile"
+          name="file"
+          accept="audio/*"
+          aria-describedby="audioHelp"
+        />
+        <small id="audioHelp">Supported formats: WAV, MP3, M4A, WebM</small>
+      </div>
+
+      <!-- Hidden input for recorded audio -->
+      <input type="hidden" id="recordedAudio" name="recorded_audio" />
+    </div>
+  </fieldset>
+
+  <button type="submit">Register</button>
+</form>
+
+<script>
+// Voice recording functionality
+let mediaRecorder;
+let audioChunks = [];
+const recordBtn = document.getElementById('recordBtn');
+const recordingStatus = document.getElementById('recordingStatus');
+const audioPlayback = document.getElementById('audioPlayback');
+const audioFileInput = document.getElementById('audioFile');
+
+recordBtn.addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    recordBtn.textContent = 'Start Recording';
+    recordBtn.classList.remove('recording');
+    recordingStatus.textContent = 'Processing...';
+  } else {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioPlayback.src = audioUrl;
+        audioPlayback.style.display = 'block';
+        recordingStatus.textContent = 'Recording saved. You can play it back above.';
+
+        // Create a File object from the blob for form submission
+        const file = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        audioFileInput.files = dataTransfer.files;
+      };
+
+      mediaRecorder.start();
+      recordBtn.textContent = 'Stop Recording';
+      recordBtn.classList.add('recording');
+      recordingStatus.textContent = 'Recording... Speak your secret phrase.';
+    } catch (err) {
+      recordingStatus.textContent = 'Error: Could not access microphone. Please use file upload.';
+      console.error('Microphone error:', err);
+    }
+  }
+});
+</script>
+{% endblock %}

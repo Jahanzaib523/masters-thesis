@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>{% block title %}Semantic Authentication System{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}" />
+  </head>
+  <body>
+    <header>
+      <h1>Semantic Authentication System (SAS)</h1>
+      <p class="tagline">AI-Driven Usability-Based Authentication with Inclusive Accessibility</p>
+      <nav aria-label="Main navigation">
+        <div class="nav-group">
+          <span class="nav-label">Register:</span>
+          <a href="{{ url_for('register_form') }}" aria-label="Register with text">Text</a>
+          <a href="{{ url_for('voice_register_form') }}" aria-label="Register with voice">Voice</a>
+        </div>
+        <div class="nav-group">
+          <span class="nav-label">Login:</span>
+          <a href="{{ url_for('login_form') }}" aria-label="Login with text">Text</a>
+          <a href="{{ url_for('voice_login_form') }}" aria-label="Login with voice">Voice</a>
+        </div>
+      </nav>
+    </header>
+    <main id="main-content" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+    <footer>
+      <p class="accessibility-note">
+        <strong>Accessibility:</strong> 
+        Voice mode with TTS for blind users | 
+        Text mode for everyone
+      </p>
+    </footer>
+  </body>
+</html>
+
