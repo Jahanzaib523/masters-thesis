@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,10 +10,6 @@ from . import models  # noqa: F401
 from .routers import auth as auth_router
 from .routers import voice_auth as voice_auth_router
 from . import web as web_routes
-
-
-# Allow frontend (Vite dev or built SPA) to call API
-FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 
 
 def create_app() -> FastAPI:
@@ -36,7 +31,7 @@ def create_app() -> FastAPI:
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[FRONTEND_ORIGIN, "http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_origins=[settings.frontend_origin, "http://127.0.0.1:5173", "http://localhost:5173"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

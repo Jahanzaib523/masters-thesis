@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     app_name: str = "Semantic Authentication System (SAS)"
     app_version: str = "0.1.0"
 
+    # Public browser origin for CORS (set in .env as FRONTEND_ORIGIN, e.g. https://yourdomain.com)
+    frontend_origin: str = "http://localhost:5173"
+
     # Database
     database_url: str = "sqlite:///./sas.db"
 
