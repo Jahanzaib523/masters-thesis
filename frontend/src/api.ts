@@ -2,6 +2,20 @@ const API_BASE = ''
 
 const TOKEN_KEY = 'sas_token'
 
+/** When set to `'1'`, API calls that use semantic LLM send `X-Semantic-LLM-Provider: openai` (requires server OPENAI_API_KEY). */
+export const SEMANTIC_LLM_USE_OPENAI_KEY = 'sas_use_openai_llm'
+
+export function semanticLlmHeaders(): Record<string, string> {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(SEMANTIC_LLM_USE_OPENAI_KEY) === '1') {
+      return { 'X-Semantic-LLM-Provider': 'openai' }
+    }
+  } catch {
+    /* private mode */
+  }
+  return {}
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -22,7 +36,7 @@ function authHeaders(): HeadersInit {
 export type RegisterPayload = {
   username: string
   email?: string
-  password?: string
+  password: string
   secret_text: string
   secret_type?: 'text' | 'voice'
 }
@@ -71,6 +85,10 @@ export function userFriendlyMessage(message: string, _context?: 'auth' | 'profil
     return "That username is already in use. Please choose another or sign in."
   if (m.includes('user with this email') || m.includes('email already exists'))
     return "That email is already in use. Sign in or use a different email."
+  if (m.includes('incorrect password'))
+    return "That password doesn't match. Try again or reset it from Profile if you're signed in elsewhere."
+  if (m.includes('no password on file'))
+    return "This account was created without a password. Register again with a password, or set one if you can open Profile another way."
   if (m.includes('unable to start login') || m.includes('identifier'))
     return "We don't have an account with that username or email. Check the spelling or register first."
   if (m.includes('invalid or expired token') || m.includes('not authenticated'))
@@ -79,6 +97,8 @@ export function userFriendlyMessage(message: string, _context?: 'auth' | 'profil
     return "Too many wrong answers. Use \"Start over\" below and try again with your username."
   if (m.includes('could not match') || m.includes('similarity'))
     return "That didn't match what we have on file. You can try again with a different way of describing your secret."
+  if (m.includes('openai') && m.includes('not configured'))
+    return 'OpenAI was selected but the server is not configured for it. Turn off “Use OpenAI” or ask the administrator to set OPENAI_API_KEY.'
   return message
 }
 
@@ -105,7 +125,7 @@ export const api = {
   async register(payload: RegisterPayload): Promise<UserPublic> {
     const r = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...semanticLlmHeaders() },
       body: JSON.stringify(payload),
     })
     return handleRes(r)
@@ -114,16 +134,17 @@ export const api = {
   async registerVoice(form: FormData): Promise<UserPublic> {
     const r = await fetch(`${API_BASE}/auth/voice/register`, {
       method: 'POST',
+      headers: semanticLlmHeaders(),
       body: form,
     })
     return handleRes(r)
   },
 
-  async loginInit(identifier: string, mode?: 'text' | 'voice'): Promise<LoginInitResponse> {
+  async loginInit(identifier: string, password: string, mode?: 'text' | 'voice'): Promise<LoginInitResponse> {
     const r = await fetch(`${API_BASE}/auth/login/init`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, mode: mode ?? 'text' }),
+      body: JSON.stringify({ identifier, password, mode: mode ?? 'text' }),
     })
     return handleRes(r)
   },
@@ -131,7 +152,7 @@ export const api = {
   async loginComplete(challengeId: number, responseText: string): Promise<LoginResult> {
     const r = await fetch(`${API_BASE}/auth/login/complete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...semanticLlmHeaders() },
       body: JSON.stringify({ challenge_id: challengeId, response_text: responseText }),
     })
     return handleRes(r)
@@ -141,13 +162,14 @@ export const api = {
     form.set('challenge_id', String(challengeId))
     const r = await fetch(`${API_BASE}/auth/voice/login/complete`, {
       method: 'POST',
+      headers: semanticLlmHeaders(),
       body: form,
     })
     return handleRes(r)
   },
 
-  voiceLoginInit(identifier: string): Promise<LoginInitResponse> {
-    return this.loginInit(identifier, 'voice')
+  voiceLoginInit(identifier: string, password: string): Promise<LoginInitResponse> {
+    return this.loginInit(identifier, password, 'voice')
   },
 
   getPromptAudio(challengeId: number): string {
@@ -171,7 +193,7 @@ export const api = {
   async updateProfileSecretText(secret_text: string): Promise<ProfileResponse> {
     const r = await fetch(`${API_BASE}/auth/profile/secret`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...semanticLlmHeaders() },
       body: JSON.stringify({ secret_text }),
     })
     return handleRes(r)
@@ -180,7 +202,7 @@ export const api = {
   async updateProfileSecretVoice(form: FormData): Promise<ProfileResponse> {
     const r = await fetch(`${API_BASE}/auth/profile/secret/voice`, {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { ...authHeaders(), ...semanticLlmHeaders() },
       body: form,
     })
     return handleRes(r)

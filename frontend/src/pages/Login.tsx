@@ -1,7 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
+import type { Step } from 'react-joyride'
 import { api, getToken, setToken, userFriendlyMessage } from '../api'
 import type { LoginResult } from '../api'
+import { PageTour } from '../tour/PageTour'
+import { TOUR_STORAGE } from '../tour/storageKeys'
 
 type ResponseType = 'text' | 'voice'
 
@@ -17,6 +20,7 @@ export function Login() {
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<'id' | 'response'>('id')
   const [identifier, setIdentifier] = useState('')
+  const [password, setPassword] = useState('')
   const [challengeId, setChallengeId] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
   const [secretType, setSecretType] = useState<string>('text')
@@ -30,6 +34,81 @@ export function Login() {
   const recordedBlob = useRef<Blob | null>(null)
 
   const registered = (location.state as { registered?: boolean })?.registered
+
+  const loginCredentialSteps = useMemo<Step[]>(
+    () => [
+      {
+        target: 'body',
+        placement: 'center',
+        title: 'Welcome',
+        content:
+          'Semantic sign-in uses your password plus a secret you describe in your own words. This tour walks through the two steps.',
+        disableBeacon: true,
+      },
+      {
+        target: '[data-tour="login-step-badge"]',
+        title: 'Two steps',
+        content: 'First you prove who you are with username/email and password. Then you verify your semantic secret.',
+      },
+      {
+        target: '[data-tour="login-heading-block"]',
+        title: 'Sign in',
+        content: 'Use the same username or email you registered with, and your account password.',
+      },
+      {
+        target: '[data-tour="login-identifier"]',
+        title: 'Username or email',
+        content: 'Enter your username or the email on your account.',
+      },
+      {
+        target: '[data-tour="login-password"]',
+        title: 'Password',
+        content: 'This is your regular account password—not your secret phrase yet.',
+      },
+      {
+        target: '[data-tour="login-continue"]',
+        title: 'Continue',
+        content: 'When your credentials are correct, you’ll go to step 2 to describe or speak your secret.',
+      },
+    ],
+    []
+  )
+
+  const loginVerifySteps = useMemo<Step[]>(
+    () => [
+      {
+        target: 'body',
+        placement: 'center',
+        title: 'Verify your secret',
+        content:
+          'Now prove you know your semantic secret. You can type a paraphrase or use voice—whatever matches how you registered.',
+        disableBeacon: true,
+      },
+      {
+        target: '[data-tour="login-verify-intro"]',
+        title: 'Your secret check',
+        content:
+          'The heading and text remind you what to do. Express the same idea you used when you registered—paraphrases and descriptions are OK.',
+      },
+      {
+        target: '[data-tour="login-response-tabs"]',
+        title: 'Text or voice',
+        content: 'Switch here if you want to type your answer or speak/upload it (useful for accessibility).',
+      },
+      {
+        target: '[data-tour="login-response-field"]',
+        title: 'Your answer',
+        content:
+          'Describe the same idea you used at registration—in your own words. There is no fixed minimum length; meaning matters.',
+      },
+      {
+        target: '[data-tour="login-verify-actions"]',
+        title: 'Back or finish',
+        content: 'Go back to change credentials, or submit to complete sign-in.',
+      },
+    ],
+    []
+  )
 
   useEffect(() => {
     if (getToken()) {
@@ -73,7 +152,7 @@ export function Login() {
     setError(null)
     setLoading(true)
     try {
-      const res = await api.loginInit(identifier)
+      const res = await api.loginInit(identifier, password)
       setChallengeId(res.challenge_id)
       setPrompt(res.prompt)
       setSecretType(res.secret_type ?? 'text')
@@ -141,15 +220,19 @@ export function Login() {
 
   if (step === 'response') {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
+      <>
+        <PageTour storageKey={TOUR_STORAGE.loginVerify} steps={loginVerifySteps} />
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
         <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
-          <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 2 of 2</span>
+          <span data-tour="login-verify-badge" className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 2 of 2</span>
         </div>
         {registered && (
           <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800 ring-1 ring-green-100">Registration successful. Complete sign in below.</p>
         )}
-        <h2 className="text-xl font-semibold text-slate-800">Verify your secret</h2>
-        <p className="mt-2 text-slate-600">{prompt}</p>
+        <div data-tour="login-verify-intro">
+          <h2 className="text-xl font-semibold text-slate-800">Verify your secret</h2>
+          <p className="mt-2 text-slate-600">{prompt}</p>
+        </div>
 
         {(secretType === 'voice' || responseType === 'voice') && (
           <div className="mt-4">
@@ -163,7 +246,7 @@ export function Login() {
           </div>
         )}
 
-        <div className="mt-6 flex gap-2 rounded-xl bg-slate-100 p-1.5" role="tablist" aria-label="Response type">
+        <div className="mt-6 flex gap-2 rounded-xl bg-slate-100 p-1.5" role="tablist" aria-label="Response type" data-tour="login-response-tabs">
           {RESPONSE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -199,6 +282,7 @@ export function Login() {
                 setLocked(false)
                 setError(null)
                 setResponseText('')
+                setPassword('')
                 recordedBlob.current = null
                 setAudioUrl(null)
               }}
@@ -209,14 +293,14 @@ export function Login() {
           </div>
         )}
 
-        <form onSubmit={handleComplete} className="mt-6 space-y-4">
+        <form onSubmit={handleComplete} className="mt-6 space-y-4" data-tour="login-response-field">
           {responseType === 'text' && (
             <div>
-              <label htmlFor="response" className="block text-sm font-medium text-slate-700">Your response (required, same meaning in your words)</label>
+              <label htmlFor="response" className="block text-sm font-medium text-slate-700">Your response (same meaning in your words—no minimum length)</label>
               <textarea
                 id="response"
                 required
-                minLength={3}
+                minLength={1}
                 rows={4}
                 value={responseText}
                 onChange={(e) => setResponseText(e.target.value)}
@@ -247,7 +331,7 @@ export function Login() {
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-2" data-tour="login-verify-actions">
             <button
               type="button"
               onClick={() => {
@@ -274,29 +358,34 @@ export function Login() {
           </p>
         </form>
       </div>
+      </>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
+    <>
+      <PageTour storageKey={TOUR_STORAGE.loginCredentials} steps={loginCredentialSteps} />
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
       <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
-        <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 1 of 2</span>
+        <span data-tour="login-step-badge" className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 1 of 2</span>
       </div>
       {registered && (
         <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800 ring-1 ring-green-100">Registration successful. Sign in below.</p>
       )}
-      <h2 className="text-xl font-semibold text-slate-800">Sign in</h2>
-      <p className="mt-1 text-sm text-slate-500">Enter your username or email to continue.</p>
+      <div data-tour="login-heading-block">
+        <h2 className="text-xl font-semibold text-slate-800">Sign in</h2>
+        <p className="mt-1 text-sm text-slate-500">Enter your username or email and password, then you&apos;ll verify your secret phrase.</p>
+      </div>
 
       {error && (
         <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-100" role="alert">
           <p>{error}</p>
-          <p className="mt-1 text-red-600/90">Check your username or email, or register first.</p>
+          <p className="mt-1 text-red-600/90">Check your username, email, and password, or register first.</p>
         </div>
       )}
 
       <form onSubmit={handleInit} className="mt-6 space-y-4">
-        <div>
+        <div data-tour="login-identifier">
           <label htmlFor="identifier" className="block text-sm font-medium text-slate-700">Username or email (required)</label>
           <input
             id="identifier"
@@ -309,10 +398,24 @@ export function Login() {
             placeholder="e.g. alice or alice@example.com"
           />
         </div>
+        <div data-tour="login-password">
+          <label htmlFor="login-password" className="block text-sm font-medium text-slate-700">Password (required)</label>
+          <input
+            id="login-password"
+            type="password"
+            required
+            minLength={1}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+            autoComplete="current-password"
+          />
+        </div>
         <button
           type="submit"
           disabled={loading}
           aria-busy={loading}
+          data-tour="login-continue"
           className="w-full rounded-xl bg-sky-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:opacity-50 inline-flex items-center justify-center min-touch"
         >
           {loading && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
@@ -323,5 +426,6 @@ export function Login() {
         </p>
       </form>
     </div>
+    </>
   )
 }

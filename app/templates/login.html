@@ -15,7 +15,11 @@
     <form method="post" action="{{ url_for('login_start') }}">
       <div>
         <label for="identifier">Username or email</label>
-        <input id="identifier" name="identifier" type="text" required />
+        <input id="identifier" name="identifier" type="text" required autocomplete="username" />
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password" />
       </div>
       <button type="submit">Start login</button>
     </form>

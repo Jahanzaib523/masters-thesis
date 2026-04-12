@@ -12,11 +12,18 @@ All services use Groq's free tier.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from groq import Groq
 
 from .config import settings
+from .semantic_llm_prompts import (
+    SIMILARITY_SYSTEM_PROMPT,
+    SUMMARY_SYSTEM_PROMPT,
+    similarity_user_content,
+    summary_user_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,47 +51,24 @@ def score_semantic_similarity(secret_text: str, attempt_text: str) -> Optional[f
         logger.warning("Groq client not available: %s", exc)
         return None
 
-    system_prompt = (
-        "You are a semantic similarity scorer for an authentication system. "
-        "The stored concept is a MULTI-ANGLE summary of a secret phrase. "
-        "The login attempt may describe the same phrase from ANY valid angle: "
-        "a paraphrase, a factual description, a cultural reference, a linguistic property, "
-        "an analogy, a translation, or a descriptive interpretation. "
-        "\n\n"
-        "Scoring rules:\n"
-        "1. Ask: 'Could this login attempt plausibly be describing the SAME phrase or concept as the stored summary?' "
-        "   If yes from any angle → high score.\n"
-        "2. Score 0.85-1.0: Attempt clearly identifies the same concept from any valid angle "
-        "   (e.g. stored = pangram about a fox and dog; attempt = 'contains all English alphabet letters' → 0.9).\n"
-        "3. Score 0.65-0.84: Attempt mostly identifies the concept but is somewhat incomplete or indirect.\n"
-        "4. Score 0.35-0.64: Attempt shares some aspect but misses the core or is ambiguous.\n"
-        "5. Score 0.0-0.34: Attempt is vague, generic, unrelated, or only mentions a trivial surface detail "
-        "   that could apply to thousands of phrases (e.g. just 'I know' or just 'summer' or just 'dog').\n"
-        "\n"
-        "Give ONLY one number between 0 and 1, no explanation."
-    )
-
-    user_prompt = (
-        "Stored concept (summary of user's secret):\n"
-        f"{secret_text}\n\n"
-        "Login attempt:\n"
-        f"{attempt_text}\n\n"
-        "Score (0-1):"
-    )
-
     try:
         completion = client.chat.completions.create(
             model=settings.groq_model_id,
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "system", "content": SIMILARITY_SYSTEM_PROMPT},
+                {"role": "user", "content": similarity_user_content(secret_text, attempt_text)},
             ],
             temperature=0.0,
-            max_tokens=5,
+            max_tokens=250,
         )
         content = completion.choices[0].message.content.strip()
-        first_token = content.split()[0]
-        score = float(first_token)
+        logger.info("LLM scoring response: %s", content)
+        match = re.search(r"SCORE:\s*([\d.]+)", content, re.IGNORECASE)
+        if match:
+            score = float(match.group(1))
+        else:
+            last_number = re.findall(r"[\d.]+", content)
+            score = float(last_number[-1]) if last_number else 0.0
         return max(0.0, min(1.0, score))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to score similarity via Groq: %s", exc)
@@ -104,37 +88,15 @@ def generate_semantic_summary(text: str) -> Optional[str]:
         logger.warning("Groq client not available: %s", exc)
         return None
 
-    system_prompt = (
-        "You are a semantic indexer for an authentication system. "
-        "A user registers with a secret phrase. Your job is to generate a RICH, MULTI-ANGLE summary "
-        "so that ANY valid description of the phrase can be matched at login time. "
-        "\n\n"
-        "Cover ALL of the following angles that apply:\n"
-        "1. LITERAL MEANING: What does the phrase literally describe? (who, what, action, setting)\n"
-        "2. CONCEPTUAL/FACTUAL: Is this phrase known for a specific property or fact? "
-        "   (e.g. a pangram contains all alphabet letters; a palindrome reads same both ways; "
-        "   a famous quote has an author; a riddle has an answer)\n"
-        "3. CULTURAL/COMMON KNOWLEDGE: Is this phrase famous, a proverb, a movie title, a saying? "
-        "   What is it commonly associated with or known as?\n"
-        "4. STRUCTURAL/LINGUISTIC: Any notable linguistic feature (all letters, rhyme, alliteration, "
-        "   wordplay, translation, language it is in)?\n"
-        "5. ABSTRACT THEME: What broader idea, emotion, or theme does it represent?\n"
-        "\n"
-        "Output a dense summary (3-6 sentences) covering as many of these angles as apply. "
-        "Be specific enough that descriptive interpretations, paraphrases, factual descriptions, "
-        "cultural references, and analogies would all match. "
-        "Do NOT store the raw phrase—abstract it but keep all meaningful angles."
-    )
-
     try:
         completion = client.chat.completions.create(
             model=settings.groq_model_id,
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Secret phrase: {text}"},
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": summary_user_content(text)},
             ],
             temperature=0.0,
-            max_tokens=150,
+            max_tokens=200,
         )
         return completion.choices[0].message.content.strip()
     except Exception as exc:  # noqa: BLE001

@@ -19,15 +19,15 @@
       <input id="email" name="email" type="email" />
     </div>
     <div>
-      <label for="password">Password (optional)</label>
-      <input id="password" name="password" type="password" />
+      <label for="password">Password (required, min 8 characters)</label>
+      <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password" />
       <p id="password-help">
-        A traditional password can be used as a baseline factor, but the semantic secret is still required.
+        You need this password every time you sign in, together with your semantic secret.
       </p>
     </div>
     <div>
       <label for="secret_text">
-        Secret idea (semantic secret)
+        Secret idea (semantic secret, max 100 characters)
       </label>
       <textarea
         id="secret_text"
@@ -35,9 +35,11 @@
         rows="4"
         aria-describedby="secret-help"
         required
+        minlength="1"
+        maxlength="100"
       ></textarea>
       <p id="secret-help">
-        Describe a phrase or idea that is personally meaningful to you.
+        Describe a phrase or idea that is personally meaningful to you (up to 100 characters).
         Later, you will log in by expressing this idea in your own words (paraphrase, analogy, description, or even another language).
       </p>
     </div>

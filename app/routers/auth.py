@@ -12,13 +12,10 @@ from ..config import settings
 from ..db import get_db
 from ..security import encrypt_embedding, decrypt_embedding, encrypt_text, decrypt_text
 from ..semantic import semantic_service, vector_to_bytes, bytes_to_vector
-from ..groq_client import (
-    score_semantic_similarity,
-    generate_semantic_summary,
-    synthesize_speech,
-    transcribe_audio,
-)
-from ..passwords import hash_password
+from ..groq_client import synthesize_speech, transcribe_audio
+from ..llm_provider import SemanticLlmBackend, get_semantic_llm_backend
+from ..semantic_llm import generate_semantic_summary, score_semantic_similarity
+from ..passwords import hash_password, verify_password
 from ..tokens import create_access_token, decode_access_token
 
 router = APIRouter()
@@ -61,8 +58,11 @@ def _bucket_similarity(value: float) -> str:
     return ">=0.8"
 
 
-@router.post("/register", response_model=schemas.UserPublic, status_code=status.HTTP_201_CREATED)
-def register_user(payload: schemas.UserCreate, db: Session = Depends(get_db)) -> schemas.UserPublic:
+def register_user_core(
+    payload: schemas.UserCreate,
+    db: Session,
+    llm_backend: SemanticLlmBackend,
+) -> schemas.UserPublic:
     """Register a new user and store encrypted semantic embeddings for their secret."""
 
     conditions = [models.User.username == payload.username]
@@ -79,7 +79,7 @@ def register_user(payload: schemas.UserCreate, db: Session = Depends(get_db)) ->
     user = models.User(
         username=payload.username,
         email=payload.email,
-        password_hash=hash_password(payload.password) if payload.password else None,
+        password_hash=hash_password(payload.password),
     )
     db.add(user)
     db.flush()  # Ensure user.id is available
@@ -90,7 +90,7 @@ def register_user(payload: schemas.UserCreate, db: Session = Depends(get_db)) ->
     encrypted_bytes = encrypt_embedding(raw_bytes)
 
     # Generate semantic summary using LLM (stores concept, NOT raw text)
-    semantic_summary = generate_semantic_summary(payload.secret_text)
+    semantic_summary = generate_semantic_summary(payload.secret_text, llm_backend)
     semantic_summary_encrypted = encrypt_text(semantic_summary) if semantic_summary else None
 
     secret_embedding = models.SecretEmbedding(
@@ -107,6 +107,17 @@ def register_user(payload: schemas.UserCreate, db: Session = Depends(get_db)) ->
     return user
 
 
+@router.post("/register", response_model=schemas.UserPublic, status_code=status.HTTP_201_CREATED)
+def register_account(
+    payload: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
+) -> schemas.UserPublic:
+    """HTTP: register with optional X-Semantic-LLM-Provider: openai for OpenAI chat LLM."""
+
+    return register_user_core(payload, db, llm_backend)
+
+
 @router.post("/login/init", response_model=schemas.LoginInitResponse)
 def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db)) -> schemas.LoginInitResponse:
     """Initialize a semantic login challenge for the given identifier."""
@@ -118,6 +129,17 @@ def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unable to start login for the provided identifier.",
+        )
+
+    if not user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has no password on file. Register a new account with a password, or set a password if you can access your profile another way.",
+        )
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect password.",
         )
 
     # Get the user's secret type
@@ -155,8 +177,11 @@ def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db))
     )
 
 
-@router.post("/login/complete", response_model=schemas.LoginResult)
-def login_complete(payload: schemas.LoginCompleteRequest, db: Session = Depends(get_db)) -> schemas.LoginResult:
+def login_complete_core(
+    payload: schemas.LoginCompleteRequest,
+    db: Session,
+    llm_backend: SemanticLlmBackend,
+) -> schemas.LoginResult:
     """Complete a semantic login challenge by comparing user input with stored embeddings."""
 
     challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == payload.challenge_id).first()
@@ -210,7 +235,7 @@ def login_complete(payload: schemas.LoginCompleteRequest, db: Session = Depends(
 
     if secret_embedding.semantic_summary_encrypted:
         semantic_summary = decrypt_text(secret_embedding.semantic_summary_encrypted)
-        llm_score = score_semantic_similarity(semantic_summary, payload.response_text)
+        llm_score = score_semantic_similarity(semantic_summary, payload.response_text, llm_backend)
         if llm_score is not None:
             similarity = llm_score
         else:
@@ -225,12 +250,6 @@ def login_complete(payload: schemas.LoginCompleteRequest, db: Session = Depends(
         stored_vector = bytes_to_vector(stored_bytes)
         response_vector = semantic_service.embed(payload.response_text)
         similarity = semantic_service.similarity(stored_vector, response_vector)
-
-    # Hard-reject near-empty responses (1-2 words can never convey a full concept)
-    response_stripped = (payload.response_text or "").strip()
-    word_count = len(response_stripped.split())
-    if word_count <= 2:
-        similarity = min(similarity, 0.3)
 
     challenge.attempt_count += 1
 
@@ -273,6 +292,17 @@ def login_complete(payload: schemas.LoginCompleteRequest, db: Session = Depends(
         similarity_score=round(similarity, 3),  # Include score for research/debugging
         token=token,
     )
+
+
+@router.post("/login/complete", response_model=schemas.LoginResult)
+def login_complete(
+    payload: schemas.LoginCompleteRequest,
+    db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
+) -> schemas.LoginResult:
+    """HTTP: complete login; optional X-Semantic-LLM-Provider: openai."""
+
+    return login_complete_core(payload, db, llm_backend)
 
 
 # =============================================================================
@@ -351,13 +381,14 @@ def _replace_secret_for_user(
     user_id: int,
     secret_text: str,
     secret_type: str,
+    llm_backend: SemanticLlmBackend,
 ) -> None:
     """Remove all existing secret embeddings for user and add one new one (text or voice)."""
     db.query(models.SecretEmbedding).filter(models.SecretEmbedding.user_id == user_id).delete()
     embedding_vector = semantic_service.embed(secret_text)
     raw_bytes = vector_to_bytes(embedding_vector)
     encrypted_bytes = encrypt_embedding(raw_bytes)
-    semantic_summary = generate_semantic_summary(secret_text)
+    semantic_summary = generate_semantic_summary(secret_text, llm_backend)
     semantic_summary_encrypted = encrypt_text(semantic_summary) if semantic_summary else None
     secret_embedding = models.SecretEmbedding(
         user_id=user_id,
@@ -374,9 +405,10 @@ def update_profile_secret_text(
     payload: schemas.SecretUpdateText,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.ProfileResponse:
     """Set semantic secret to a new text phrase. Overwrites voice secret if present (one per account)."""
-    _replace_secret_for_user(db, user.id, payload.secret_text, models.SecretType.TEXT)
+    _replace_secret_for_user(db, user.id, payload.secret_text, models.SecretType.TEXT, llm_backend)
     db.commit()
     db.refresh(user)
     return _profile_response(user, db)
@@ -387,6 +419,7 @@ async def update_profile_secret_voice(
     file: UploadFile = File(...),
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.ProfileResponse:
     """Set semantic secret from spoken audio. Overwrites text secret if present (one per account)."""
     audio_bytes = await file.read()
@@ -396,10 +429,26 @@ async def update_profile_secret_voice(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unable to transcribe the provided audio.",
         )
-    _replace_secret_for_user(db, user.id, secret_text, models.SecretType.VOICE)
+    secret_text = secret_text.strip()
+    if not secret_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transcription was empty. Try speaking more clearly.",
+        )
+    if len(secret_text) > schemas.SECRET_TEXT_MAX_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Transcribed secret is too long (max {schemas.SECRET_TEXT_MAX_LENGTH} characters). "
+                "Try a shorter phrase."
+            ),
+        )
+    _replace_secret_for_user(db, user.id, secret_text, models.SecretType.VOICE, llm_backend)
     db.commit()
     db.refresh(user)
     return _profile_response(user, db)
+
+
 def text_to_speech(text: str) -> Response:
     """Convert text to speech audio. Returns WAV audio for accessibility."""
 

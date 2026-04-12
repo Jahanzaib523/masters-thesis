@@ -10,6 +10,12 @@ export function Help() {
           </p>
         </section>
         <section>
+          <h2 className="font-semibold text-slate-800">Password and secret when signing in</h2>
+          <p className="mt-1">
+            You need <strong>both</strong> your account password and your semantic secret: first enter username (or email) and password, then describe your secret in your own words (or speak it). Register with a password of at least 8 characters and a secret phrase of at most 100 characters (there is no length limit for how you phrase your secret at login—only that it matches semantically).
+          </p>
+        </section>
+        <section>
           <h2 className="font-semibold text-slate-800">Text or voice?</h2>
           <p className="mt-1">
             You can register and sign in by <strong>typing</strong> or by <strong>speaking</strong>. Voice is useful if you prefer not to type or use a screen reader. You can change between text and voice later in Profile (one type per account at a time).

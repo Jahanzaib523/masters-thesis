@@ -1,4 +1,5 @@
 import os
+import uuid
 
 
 def _ensure_env():
@@ -16,6 +17,9 @@ def test_health_and_text_auth_flow():
     from app.main import app
 
     client = TestClient(app)
+    suffix = uuid.uuid4().hex[:12]
+    username = f"alice_{suffix}"
+    email = f"alice_{suffix}@example.com"
 
     # Health
     r = client.get("/health")
@@ -26,10 +30,12 @@ def test_health_and_text_auth_flow():
     r = client.post(
         "/auth/register",
         json={
-            "username": "alice",
-            "email": "alice@example.com",
+            "username": username,
+            "email": email,
             "password": "Password123!",
-            "secret_text": "A quick brown fox jumps over a lazy dog.",
+            "secret_text": (
+                "A quick brown fox jumps over a lazy dog. Famous pangram for typing demos."
+            ),
         },
     )
     assert r.status_code == 201, r.text
@@ -37,7 +43,10 @@ def test_health_and_text_auth_flow():
     assert user_id
 
     # Login init
-    r = client.post("/auth/login/init", json={"identifier": "alice"})
+    r = client.post(
+        "/auth/login/init",
+        json={"identifier": username, "password": "Password123!"},
+    )
     assert r.status_code == 200, r.text
     challenge_id = r.json()["challenge_id"]
     assert challenge_id

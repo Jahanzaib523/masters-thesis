@@ -6,6 +6,7 @@ pydantic-settings
 python-dotenv
 jinja2
 groq
+openai>=1.40.0
 sentence-transformers
 python-multipart
 cryptography

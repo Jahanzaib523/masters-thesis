@@ -35,11 +35,13 @@
       autocomplete="email"
     />
 
-    <label for="password">Password (optional backup)</label>
+    <label for="password">Password (required, min 8 characters)</label>
     <input
       type="password"
       id="password"
       name="password"
+      required
+      minlength="8"
       autocomplete="new-password"
     />
   </fieldset>

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     groq_tts_model_id: str = "canopylabs/orpheus-v1-english"  # Text-to-speech
     groq_tts_voice: str = "hannah"
 
+    # OpenAI (optional) — chat completions for semantic summary + login similarity when client selects OpenAI
+    openai_api_key: str | None = None
+    # Override in .env: OPENAI_MODEL=gpt-4o or gpt-4o-mini, etc. (see OpenAI model docs)
+    openai_model: str = "gpt-4o-mini"
+
     # Crypto / auth tokens
     sas_encryption_key: str | None = None  # Fernet key (base64 urlsafe 32 bytes)
     jwt_secret_key: str | None = None

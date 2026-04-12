@@ -3,6 +3,9 @@ from typing import Optional, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
+# Registration / profile secret text (login responses are not capped)
+SECRET_TEXT_MAX_LENGTH = 100
+
 
 # ---- Core user models ----
 
@@ -13,14 +16,16 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: Optional[str] = Field(
-        default=None,
-        description="Optional baseline password; semantic secret is still required.",
+    password: str = Field(
+        ...,
+        min_length=8,
+        description="Required password used with your semantic secret when you sign in.",
     )
     secret_text: str = Field(
         ...,
-        min_length=10,
-        description="Meaningful secret phrase used to derive semantic embeddings.",
+        min_length=1,
+        max_length=SECRET_TEXT_MAX_LENGTH,
+        description=f"Meaningful secret phrase used to derive semantic embeddings (max {SECRET_TEXT_MAX_LENGTH} characters).",
     )
     secret_type: Literal["text", "voice"] = Field(
         default="text",
@@ -67,7 +72,7 @@ class ProfileUpdate(BaseModel):
 class SecretUpdateText(BaseModel):
     """Update semantic secret to a new text phrase (overwrites voice if present)."""
 
-    secret_text: str = Field(..., min_length=10)
+    secret_text: str = Field(..., min_length=1, max_length=SECRET_TEXT_MAX_LENGTH)
 
 
 # ---- Auth / login schemas ----
@@ -77,6 +82,11 @@ class LoginInitRequest(BaseModel):
     identifier: str = Field(
         ...,
         description="Username or email used to identify the user.",
+    )
+    password: str = Field(
+        ...,
+        min_length=1,
+        description="Account password (required before the semantic prompt step).",
     )
     mode: Literal["text", "voice"] = Field(
         default="text",
@@ -104,8 +114,8 @@ class LoginCompleteRequest(BaseModel):
     challenge_id: int
     response_text: str = Field(
         ...,
-        min_length=3,
-        description="User's description/paraphrase/analogy of their secret idea.",
+        min_length=1,
+        description="User's login response (any length; evaluated by semantic similarity).",
     )
 
 

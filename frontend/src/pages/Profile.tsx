@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import type { Step } from 'react-joyride'
 import { api, ApiError, clearToken, getToken, userFriendlyMessage } from '../api'
 import type { ProfileResponse } from '../api'
+import { PageTour } from '../tour/PageTour'
+import { TOUR_STORAGE } from '../tour/storageKeys'
 
 type SecretTab = 'text' | 'voice'
+
+const SECRET_MAX_CHARS = 100
 
 export function Profile() {
   const navigate = useNavigate()
@@ -80,8 +85,13 @@ export function Profile() {
 
   const handleUpdateSecretText = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!secretText.trim() || secretText.trim().length < 10) {
-      setError('Secret phrase must be at least 10 characters.')
+    const t = secretText.trim()
+    if (!t) {
+      setError('Enter a secret phrase.')
+      return
+    }
+    if (t.length > SECRET_MAX_CHARS) {
+      setError(`Secret phrase must be at most ${SECRET_MAX_CHARS} characters.`)
       return
     }
     setError(null)
@@ -165,10 +175,35 @@ export function Profile() {
     setRecording(false)
   }
 
-  const handleSignOut = () => {
-    clearToken()
-    navigate('/', { replace: true })
-  }
+  const profileSteps = useMemo<Step[]>(
+    () => [
+      {
+        target: 'body',
+        placement: 'center',
+        title: 'Your profile',
+        content:
+          'Manage your account details and your semantic secret. The secret is how you prove identity after entering your password.',
+        disableBeacon: true,
+      },
+      {
+        target: '[data-tour="profile-header"]',
+        title: 'Header',
+        content: 'Your profile title. Use Sign out in the top navigation to end this device’s session.',
+      },
+      {
+        target: '[data-tour="profile-account"]',
+        title: 'Account',
+        content: 'Update username, optional email, or set a new password. Leave password blank to keep the current one.',
+      },
+      {
+        target: '[data-tour="profile-secret"]',
+        title: 'Semantic secret',
+        content:
+          'Change your sign-in phrase here (text or voice). Replacing it overwrites the old one—you’ll use the new phrase next time you sign in.',
+      },
+    ],
+    []
+  )
 
   if (loading) {
     return (
@@ -189,15 +224,9 @@ export function Profile() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <PageTour storageKey={TOUR_STORAGE.profile} steps={profileSteps} />
+      <div data-tour="profile-header">
         <h1 className="text-2xl font-semibold text-slate-800">Profile</h1>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="rounded-lg border border-slate-300 px-4 py-2 min-h-[44px] text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Log out
-        </button>
       </div>
 
       {error && (
@@ -207,7 +236,7 @@ export function Profile() {
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-tour="profile-account">
         <h2 className="text-lg font-semibold text-slate-800">Account</h2>
         <p className="mt-1 text-sm text-slate-500">Update username, email, or password. Email must be unique.</p>
         <form onSubmit={handleUpdateAccount} className="mt-4 space-y-4">
@@ -264,7 +293,7 @@ export function Profile() {
         </form>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-tour="profile-secret">
         <h2 className="text-lg font-semibold text-slate-800">Secret (sign-in phrase)</h2>
         <p className="mt-1 text-sm text-slate-500">
           You sign in by describing this idea in your own words (or by speaking it). Current type: <strong>{profile.secret_type}</strong>. One per account; changing overwrites the previous.
@@ -309,7 +338,9 @@ export function Profile() {
 
         {secretTab === 'text' && (
           <form onSubmit={handleUpdateSecretText} className="mt-4 space-y-3">
-            <label htmlFor="profile-secret" className="block text-sm font-medium text-slate-700">New secret phrase (required, min 10 characters)</label>
+            <label htmlFor="profile-secret" className="block text-sm font-medium text-slate-700">
+              New secret phrase (required, max {SECRET_MAX_CHARS} characters)
+            </label>
             <textarea
               id="profile-secret"
               rows={3}
@@ -317,11 +348,19 @@ export function Profile() {
               onChange={(e) => setSecretText(e.target.value)}
               className="block w-full rounded-lg border border-slate-300 px-3 py-2"
               placeholder="Type your new secret phrase"
-              minLength={10}
+              minLength={1}
+              maxLength={SECRET_MAX_CHARS}
             />
+            <p className="text-xs text-slate-500" aria-live="polite">
+              {secretText.length}/{SECRET_MAX_CHARS} characters
+            </p>
             <button
               type="submit"
-              disabled={secretSaving || secretText.trim().length < 10}
+              disabled={
+                secretSaving ||
+                !secretText.trim() ||
+                secretText.trim().length > SECRET_MAX_CHARS
+              }
               aria-busy={secretSaving}
               className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center"
             >
@@ -334,6 +373,9 @@ export function Profile() {
         {secretTab === 'voice' && (
           <form onSubmit={handleUpdateSecretVoice} className="mt-4 space-y-3">
             <p className="text-sm font-medium text-slate-700">Record or upload audio with your new secret phrase</p>
+            <p className="text-xs text-slate-500">
+              Transcribed text must be at most {SECRET_MAX_CHARS} characters.
+            </p>
             <div className="flex flex-wrap items-center gap-3">
               {!recording ? (
                 <button type="button" onClick={startRecording} className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600">

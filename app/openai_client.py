@@ -1,0 +1,90 @@
+"""
+OpenAI Chat Completions for semantic summary + similarity scoring.
+
+Uses the same prompts as Groq. Configure model via OPENAI_MODEL (default: gpt-4o-mini).
+See: https://platform.openai.com/docs/api-reference/chat/create
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from typing import Optional
+
+from openai import OpenAI
+
+from .config import settings
+from .semantic_llm_prompts import (
+    SIMILARITY_SYSTEM_PROMPT,
+    SUMMARY_SYSTEM_PROMPT,
+    similarity_user_content,
+    summary_user_content,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def get_openai_client() -> OpenAI:
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured.")
+    return OpenAI(api_key=settings.openai_api_key)
+
+
+def score_semantic_similarity(secret_text: str, attempt_text: str) -> Optional[float]:
+    """Score semantic similarity using OpenAI Chat Completions. Returns [0,1] or None."""
+
+    try:
+        client = get_openai_client()
+    except RuntimeError as exc:
+        logger.warning("OpenAI client not available: %s", exc)
+        return None
+
+    try:
+        completion = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": SIMILARITY_SYSTEM_PROMPT},
+                {"role": "user", "content": similarity_user_content(secret_text, attempt_text)},
+            ],
+            temperature=0.0,
+            max_tokens=250,
+        )
+        msg = completion.choices[0].message
+        content = (msg.content or "").strip()
+        logger.info("OpenAI scoring response: %s", content)
+        match = re.search(r"SCORE:\s*([\d.]+)", content, re.IGNORECASE)
+        if match:
+            score = float(match.group(1))
+        else:
+            last_number = re.findall(r"[\d.]+", content)
+            score = float(last_number[-1]) if last_number else 0.0
+        return max(0.0, min(1.0, score))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to score similarity via OpenAI: %s", exc)
+        return None
+
+
+def generate_semantic_summary(text: str) -> Optional[str]:
+    """Generate stored semantic summary via OpenAI Chat Completions."""
+
+    try:
+        client = get_openai_client()
+    except RuntimeError as exc:
+        logger.warning("OpenAI client not available: %s", exc)
+        return None
+
+    try:
+        completion = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": summary_user_content(text)},
+            ],
+            temperature=0.0,
+            max_tokens=200,
+        )
+        msg = completion.choices[0].message
+        return (msg.content or "").strip() or None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to generate semantic summary via OpenAI: %s", exc)
+        return None
