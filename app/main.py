@@ -1,15 +1,18 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from sqlalchemy import inspect, text
 
-from .config import settings
+from .config import log_hf_env_diagnostics, resolve_hf_api_token, settings
 from .db import Base, engine
 from . import models  # noqa: F401
 from .routers import auth as auth_router
 from .routers import voice_auth as voice_auth_router
 from . import web as web_routes
+from .greeting_image import get_image_generation_health
 
 
 def create_app() -> FastAPI:
@@ -47,6 +50,32 @@ def create_app() -> FastAPI:
             "version": settings.app_version,
         }
 
+    @app.get("/health/image-generation", tags=["system"])
+    async def image_generation_health():
+        """Image generation provider health for startup/config verification."""
+        return get_image_generation_health()
+
+    @app.get("/health/hf-env", tags=["system"])
+    async def hf_env_diagnostics():
+        """Safe diagnostics: which sources contain an HF token (no secrets returned)."""
+
+        def _present(key: str) -> bool:
+            return bool(os.environ.get(key, "").strip())
+
+        tok_settings = bool((settings.hf_api_token or "").strip())
+        resolved = bool(resolve_hf_api_token())
+        return {
+            "env_hf_api_token": _present("HF_API_TOKEN"),
+            "env_hf_token": _present("HF_TOKEN"),
+            "env_huggingface_hub_token": _present("HUGGING_FACE_HUB_TOKEN"),
+            "settings_hf_api_token_nonempty": tok_settings,
+            "resolved_token_available": resolved,
+            "hint": (
+                "If resolved_token_available is false, set HF_API_TOKEN or HF_TOKEN in the environment "
+                "or remove empty HF_API_TOKEN=\"\" from app/.env"
+            ),
+        }
+
     # Routers
     app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
     app.include_router(voice_auth_router.router, prefix="/auth", tags=["auth-voice"])
@@ -78,6 +107,22 @@ def create_app() -> FastAPI:
 
 # Create database tables on startup (simple dev-time approach).
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_user_greeting_image_columns() -> None:
+    """Lightweight schema migration for DB-stored greeting images."""
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        cols = {col["name"] for col in inspector.get_columns("users")}
+        if "greeting_image_bytes" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN greeting_image_bytes BLOB"))
+        if "greeting_image_mime" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN greeting_image_mime VARCHAR(64)"))
+
+
+_ensure_user_greeting_image_columns()
+
+log_hf_env_diagnostics()
 
 app = create_app()
 

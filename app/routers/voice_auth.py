@@ -15,6 +15,7 @@ async def voice_register_service(
     username: str,
     email: str | None,
     password: str,
+    image_text: str,
     file: UploadFile,
     db: Session,
     llm_backend: SemanticLlmBackend,
@@ -48,6 +49,7 @@ async def voice_register_service(
         email=email,
         password=password,
         secret_text=secret_text,
+        image_text=image_text,
         secret_type="voice",
     )
     return register_user_core(payload, db, llm_backend)
@@ -58,13 +60,14 @@ async def voice_register(
     username: str = Form(...),
     email: str | None = Form(None),
     password: str = Form(...),
+    image_text: str = Form(...),
     file: UploadFile = File(..., description="Audio file with spoken secret"),
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ):
     """Voice-based registration: transcribe spoken secret, then register."""
 
-    return await voice_register_service(username, email, password, file, db, llm_backend)
+    return await voice_register_service(username, email, password, image_text, file, db, llm_backend)
 
 
 @router.post("/voice/login/init", response_model=schemas.LoginInitResponse)

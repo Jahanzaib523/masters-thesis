@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from functools import lru_cache
 from typing import List, Sequence
 
 from sentence_transformers import SentenceTransformer
 
-from .config import settings
+from .config import resolve_hf_api_token, settings
 
 Vector = List[float]
 
@@ -65,7 +66,11 @@ class HFSentenceTransformerSemanticService(SemanticService):
 @lru_cache
 def load_sentence_transformer(model_name: str) -> SentenceTransformer:
     """Load and cache a sentence-transformers model."""
-
+    # Keep HF Hub auth aligned with resolved token (settings + process env).
+    tok = resolve_hf_api_token()
+    if tok:
+        os.environ.setdefault("HF_TOKEN", tok)
+        os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", tok)
     return SentenceTransformer(model_name)
 
 

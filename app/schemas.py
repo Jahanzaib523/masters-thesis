@@ -27,6 +27,12 @@ class UserCreate(UserBase):
         max_length=SECRET_TEXT_MAX_LENGTH,
         description=f"Meaningful secret phrase used to derive semantic embeddings (max {SECRET_TEXT_MAX_LENGTH} characters).",
     )
+    image_text: str = Field(
+        ...,
+        min_length=1,
+        max_length=SECRET_TEXT_MAX_LENGTH,
+        description=f"Text used only to generate your greeting image (max {SECRET_TEXT_MAX_LENGTH} characters).",
+    )
     secret_type: Literal["text", "voice"] = Field(
         default="text",
         description="Type of secret: text or voice (transcribed).",
@@ -108,6 +114,10 @@ class LoginInitResponse(BaseModel):
         default=False,
         description="If true, TTS audio of the prompt is available at /auth/voice/prompt/{challenge_id}",
     )
+    greeting_image_url: Optional[str] = Field(
+        default=None,
+        description="Server-rendered personal greeting image shown before semantic verification.",
+    )
 
 
 class LoginCompleteRequest(BaseModel):
@@ -127,6 +137,23 @@ class LoginResult(BaseModel):
         description="Similarity score (only shown in debug/research mode).",
     )
     token: Optional[str] = None
+    retry_after_seconds: Optional[int] = Field(
+        default=None,
+        description="If present, user must wait this many seconds before trying again.",
+    )
+
+
+class RecoveryRequest(BaseModel):
+    identifier: str = Field(..., description="Username or email of the locked account.")
+
+
+class RecoveryConfirmRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+
+
+class RecoveryResponse(BaseModel):
+    message: str
+    recovery_token: Optional[str] = None
 
 
 # ---- System / utility schemas ----

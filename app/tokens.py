@@ -12,8 +12,23 @@ def create_access_token(subject: str, extra_claims: Dict[str, Any] | None = None
     if not settings.jwt_secret_key:
         raise RuntimeError("JWT_SECRET_KEY is not configured.")
 
+    return create_signed_token(
+        subject=subject,
+        expires_minutes=settings.jwt_expires_minutes,
+        extra_claims=extra_claims,
+    )
+
+
+def create_signed_token(
+    subject: str,
+    expires_minutes: int,
+    extra_claims: Dict[str, Any] | None = None,
+) -> str:
+    if not settings.jwt_secret_key:
+        raise RuntimeError("JWT_SECRET_KEY is not configured.")
+
     now = datetime.now(timezone.utc)
-    exp = now + timedelta(minutes=settings.jwt_expires_minutes)
+    exp = now + timedelta(minutes=expires_minutes)
 
     payload: Dict[str, Any] = {
         "sub": subject,

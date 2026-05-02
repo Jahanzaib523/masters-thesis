@@ -24,6 +24,7 @@ export function Register() {
   const [emailTouched, setEmailTouched] = useState(false)
   const [password, setPassword] = useState('')
   const [secretText, setSecretText] = useState('')
+  const [imageText, setImageText] = useState('')
   const [recording, setRecording] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
@@ -118,6 +119,15 @@ export function Register() {
         return
       }
     }
+    const imagePrompt = imageText.trim()
+    if (!imagePrompt) {
+      setError('Enter image text for your greeting image.')
+      return
+    }
+    if (imagePrompt.length > SECRET_MAX_CHARS) {
+      setError(`Image text must be at most ${SECRET_MAX_CHARS} characters.`)
+      return
+    }
     setLoading(true)
     try {
       if (type === 'text') {
@@ -126,12 +136,14 @@ export function Register() {
           email: email || undefined,
           password,
           secret_text: secretText,
+          image_text: imagePrompt,
         })
       } else if (type === 'voice') {
         const form = new FormData()
         form.set('username', username)
         if (email) form.set('email', email)
         form.set('password', password)
+        form.set('image_text', imagePrompt)
         const fileInput = (e.target as HTMLFormElement).querySelector<HTMLInputElement>('input[name="voice-file"]')
         const file = fileInput?.files?.[0] ?? (recordedBlob.current ? new File([recordedBlob.current], 'recording.webm', { type: 'audio/webm' }) : null)
         if (!file) {
@@ -293,6 +305,25 @@ export function Register() {
               </div>
             </div>
           )}
+          <div className="mt-4">
+            <label htmlFor="imageText" className="block text-sm font-medium text-slate-700">
+              Greeting image text (required, max {SECRET_MAX_CHARS} characters)
+            </label>
+            <textarea
+              id="imageText"
+              required
+              minLength={1}
+              maxLength={SECRET_MAX_CHARS}
+              rows={2}
+              value={imageText}
+              onChange={(e) => setImageText(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+              placeholder="e.g. blue mountain with moon and river"
+            />
+            <p className="mt-1 text-xs text-slate-500" aria-live="polite">
+              {imageText.length}/{SECRET_MAX_CHARS} characters
+            </p>
+          </div>
         </div>
 
         <button
@@ -301,7 +332,9 @@ export function Register() {
             loading ||
             emailInvalid ||
             passwordInvalid ||
-            (type === 'text' && (!secretText.trim() || secretText.length > SECRET_MAX_CHARS))
+            (type === 'text' && (!secretText.trim() || secretText.length > SECRET_MAX_CHARS)) ||
+            !imageText.trim() ||
+            imageText.length > SECRET_MAX_CHARS
           }
           aria-busy={loading}
           data-tour="register-submit"

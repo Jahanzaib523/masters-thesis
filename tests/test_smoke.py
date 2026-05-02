@@ -36,6 +36,7 @@ def test_health_and_text_auth_flow():
             "secret_text": (
                 "A quick brown fox jumps over a lazy dog. Famous pangram for typing demos."
             ),
+            "image_text": "A fox silhouette over a lazy dog under moonlight.",
         },
     )
     assert r.status_code == 201, r.text

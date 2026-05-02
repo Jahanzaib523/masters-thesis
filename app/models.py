@@ -16,6 +16,16 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True, index=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    greeting_image_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    greeting_image_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    greeting_image_mime: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    greeting_seed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    greeting_prompt_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    greeting_model_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    semantic_failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    semantic_lock_step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    semantic_locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    semantic_hard_locked: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

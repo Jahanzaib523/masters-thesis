@@ -38,6 +38,7 @@ export type RegisterPayload = {
   email?: string
   password: string
   secret_text: string
+  image_text: string
   secret_type?: 'text' | 'voice'
 }
 
@@ -46,6 +47,7 @@ export type LoginInitResponse = {
   prompt: string
   secret_type: string
   audio_prompt_available: boolean
+  greeting_image_url?: string | null
 }
 
 export type LoginResult = {
@@ -53,6 +55,7 @@ export type LoginResult = {
   message: string
   similarity_score?: number
   token?: string
+  retry_after_seconds?: number
 }
 
 export type UserPublic = { id: number; username: string; email?: string; created_at: string }
@@ -95,10 +98,16 @@ export function userFriendlyMessage(message: string, _context?: 'auth' | 'profil
     return "Your session has expired. Please sign in again."
   if (m.includes('too many'))
     return "Too many wrong answers. Use \"Start over\" below and try again with your username."
+  if (m.includes('try again in') || m.includes('please wait'))
+    return 'Too many attempts. Please wait for the cooldown period and try again.'
+  if (m.includes('account locked') || m.includes('recovery via email'))
+    return 'This account is locked for security. Use account recovery via your email.'
   if (m.includes('could not match') || m.includes('similarity'))
     return "That didn't match what we have on file. You can try again with a different way of describing your secret."
   if (m.includes('openai') && m.includes('not configured'))
     return 'OpenAI was selected but the server is not configured for it. Turn off “Use OpenAI” or ask the administrator to set OPENAI_API_KEY.'
+  if (m.includes('hugging face') || m.includes('hf_api_token'))
+    return 'Image generation is not configured on the server. Ask the administrator to set HF_API_TOKEN.'
   return message
 }
 

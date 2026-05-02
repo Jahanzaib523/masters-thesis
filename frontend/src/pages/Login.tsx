@@ -23,6 +23,8 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [challengeId, setChallengeId] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
+  const [greetingImageUrl, setGreetingImageUrl] = useState<string | null>(null)
+  const [showGreetingImage, setShowGreetingImage] = useState(false)
   const [secretType, setSecretType] = useState<string>('text')
   const [responseType, setResponseType] = useState<ResponseType>('text')
   const [responseText, setResponseText] = useState('')
@@ -116,6 +118,19 @@ export function Login() {
     }
   }, [navigate])
 
+  useEffect(() => {
+    if (step !== 'response' || !greetingImageUrl) {
+      setShowGreetingImage(false)
+      return
+    }
+    setShowGreetingImage(false)
+    const randomDelayMs = 700 + Math.floor(Math.random() * 2300) // 0.7s to 3.0s
+    const timer = window.setTimeout(() => {
+      setShowGreetingImage(true)
+    }, randomDelayMs)
+    return () => window.clearTimeout(timer)
+  }, [step, greetingImageUrl, challengeId])
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -155,6 +170,7 @@ export function Login() {
       const res = await api.loginInit(identifier, password)
       setChallengeId(res.challenge_id)
       setPrompt(res.prompt)
+      setGreetingImageUrl(res.greeting_image_url ?? null)
       setSecretType(res.secret_type ?? 'text')
       setResponseType((res.secret_type as ResponseType) === 'voice' ? 'voice' : 'text')
       setStep('response')
@@ -202,8 +218,10 @@ export function Login() {
       }
 
       // Continuous feedback: show error on this step, do not go back to start
-      const isLocked = result.message.toLowerCase().includes('too many')
-      setError(result.message)
+      const lowered = result.message.toLowerCase()
+      const isLocked = lowered.includes('too many') || lowered.includes('locked') || lowered.includes('wait')
+      const waitSuffix = result.retry_after_seconds ? ` (${result.retry_after_seconds}s)` : ''
+      setError(`${result.message}${waitSuffix}`)
       if (responseType === 'voice') {
         recordedBlob.current = null
         setAudioUrl(null)
@@ -233,6 +251,21 @@ export function Login() {
           <h2 className="text-xl font-semibold text-slate-800">Verify your secret</h2>
           <p className="mt-2 text-slate-600">{prompt}</p>
         </div>
+        {greetingImageUrl && (
+          <div
+            className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 transition-opacity duration-500 ${
+              showGreetingImage ? 'opacity-100' : 'opacity-0'
+            }`}
+            aria-hidden={!showGreetingImage}
+          >
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Secret Greeting</p>
+            <img
+              src={greetingImageUrl}
+              alt="Your personal security greeting illustration"
+              className="mx-auto h-36 w-28 rounded-md border border-slate-200 bg-white object-cover"
+            />
+          </div>
+        )}
 
         {(secretType === 'voice' || responseType === 'voice') && (
           <div className="mt-4">
@@ -279,6 +312,7 @@ export function Login() {
                 setStep('id')
                 setChallengeId(null)
                 setPrompt('')
+                setGreetingImageUrl(null)
                 setLocked(false)
                 setError(null)
                 setResponseText('')

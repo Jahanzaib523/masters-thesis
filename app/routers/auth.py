@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -16,10 +17,33 @@ from ..groq_client import synthesize_speech, transcribe_audio
 from ..llm_provider import SemanticLlmBackend, get_semantic_llm_backend
 from ..semantic_llm import generate_semantic_summary, score_semantic_similarity
 from ..passwords import hash_password, verify_password
-from ..tokens import create_access_token, decode_access_token
+from ..tokens import create_access_token, create_signed_token, decode_access_token
+from ..config import resolve_hf_api_token
+from ..greeting_image import generate_greeting_image
 
 router = APIRouter()
+logger = logging.getLogger("sas.auth")
 security = HTTPBearer(auto_error=False)
+
+
+def _parse_lockout_delays() -> list[int]:
+    raw = (settings.semantic_lockout_delays_seconds or "").strip()
+    delays: list[int] = []
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        try:
+            value = int(token)
+            if value > 0:
+                delays.append(value)
+        except ValueError:
+            continue
+    return delays or [30, 300, 1800]
+
+
+def _is_temporarily_locked(user: models.User) -> bool:
+    return bool(user.semantic_locked_until and user.semantic_locked_until > datetime.utcnow())
 
 
 def get_current_user(
@@ -101,6 +125,27 @@ def register_user_core(
         model_name=settings.embedding_model_name,
     )
     db.add(secret_embedding)
+    try:
+        image_bytes, image_mime, seed, prompt_hash = generate_greeting_image(payload.image_text)
+    except Exception as exc:
+        db.rollback()
+        logger.error(
+            "register_user_core: greeting image failed user_id=%s hf_resolved=%s err=%s",
+            getattr(user, "id", None),
+            bool(resolve_hf_api_token()),
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not generate your security greeting image. Please try again. ({exc})",
+        )
+    user.greeting_image_path = None
+    user.greeting_image_bytes = image_bytes
+    user.greeting_image_mime = image_mime
+    user.greeting_seed = seed
+    user.greeting_prompt_hash = prompt_hash
+    user.greeting_model_name = settings.image_model
     db.commit()
     db.refresh(user)
 
@@ -141,6 +186,22 @@ def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db))
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect password.",
         )
+    if user.semantic_hard_locked:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account locked due to repeated semantic failures. Recovery via email is required.",
+        )
+    if _is_temporarily_locked(user):
+        remaining = int((user.semantic_locked_until - datetime.utcnow()).total_seconds())
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Too many recent semantic failures. Try again in {max(1, remaining)} seconds.",
+        )
+    if not user.greeting_image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security greeting image is missing for this account. Please reset your secret in Profile.",
+        )
 
     # Get the user's secret type
     secret = (
@@ -174,7 +235,25 @@ def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db))
         prompt=prompt,
         secret_type=secret_type,
         audio_prompt_available=True,  # TTS is always available
+        greeting_image_url=f"/auth/login/challenge/{challenge.id}/greeting-image",
     )
+
+
+@router.get("/login/challenge/{challenge_id}/greeting-image")
+def get_login_challenge_greeting_image(
+    challenge_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve greeting image for a valid login challenge (pre-semantic step)."""
+    challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found.")
+    if challenge.expires_at <= datetime.utcnow():
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Challenge expired.")
+    user = db.query(models.User).filter(models.User.id == challenge.user_id).first()
+    if not user or not user.greeting_image_bytes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Greeting image not found.")
+    return Response(content=user.greeting_image_bytes, media_type=user.greeting_image_mime or "image/png")
 
 
 def login_complete_core(
@@ -210,6 +289,22 @@ def login_complete_core(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Login failed.",
+        )
+    if user.semantic_hard_locked:
+        challenge.status = models.LoginChallengeStatus.COMPLETED
+        db.commit()
+        return schemas.LoginResult(
+            success=False,
+            message="Account locked due to repeated semantic failures. Recovery via email is required.",
+        )
+    if _is_temporarily_locked(user):
+        remaining = int((user.semantic_locked_until - datetime.utcnow()).total_seconds())
+        challenge.status = models.LoginChallengeStatus.COMPLETED
+        db.commit()
+        return schemas.LoginResult(
+            success=False,
+            message=f"Please wait before trying again. Retry in {max(1, remaining)} seconds.",
+            retry_after_seconds=max(1, remaining),
         )
 
     secret_embedding = (
@@ -261,11 +356,16 @@ def login_complete_core(
     message = "We could not match your description closely enough. You can try again."
     token: Optional[str] = None
 
+    retry_after_seconds: Optional[int] = None
     if similarity >= success_threshold:
         result_type = models.LoginResultType.SUCCESS
         message = "Authentication successful."
         token = create_access_token(subject=str(user.id), extra_claims={"username": user.username})
         challenge.status = models.LoginChallengeStatus.COMPLETED
+        user.semantic_failed_attempts = 0
+        user.semantic_lock_step = 0
+        user.semantic_locked_until = None
+        user.semantic_hard_locked = False
     elif similarity >= near_threshold and challenge.attempt_count < max_attempts:
         message = (
             "Your answer is close to what we expect. "
@@ -275,6 +375,28 @@ def login_complete_core(
         result_type = models.LoginResultType.LOCKED
         message = "Too many unsuccessful attempts for this challenge. Please start a new login."
         challenge.status = models.LoginChallengeStatus.COMPLETED
+
+    if result_type != models.LoginResultType.SUCCESS:
+        user.semantic_failed_attempts += 1
+        hard_lock_after = max(settings.semantic_hard_lock_after_failures, 1)
+        if user.semantic_failed_attempts >= hard_lock_after:
+            user.semantic_hard_locked = True
+            user.semantic_locked_until = None
+            result_type = models.LoginResultType.LOCKED
+            message = "Account locked due to repeated semantic failures. Recovery via email is required."
+            challenge.status = models.LoginChallengeStatus.COMPLETED
+        else:
+            start_after = max(settings.semantic_lockout_start_after_failures, 1)
+            delays = _parse_lockout_delays()
+            if user.semantic_failed_attempts >= start_after:
+                delay_idx = min(user.semantic_lock_step, len(delays) - 1)
+                retry_after_seconds = delays[delay_idx]
+                user.semantic_locked_until = datetime.utcnow() + timedelta(seconds=retry_after_seconds)
+                if user.semantic_lock_step < len(delays) - 1:
+                    user.semantic_lock_step += 1
+                result_type = models.LoginResultType.LOCKED
+                message = f"Too many failed semantic attempts. Try again in {retry_after_seconds} seconds."
+                challenge.status = models.LoginChallengeStatus.COMPLETED
 
     # Record login event with anonymized similarity bucket
     similarity_bucket = _bucket_similarity(similarity)
@@ -291,6 +413,7 @@ def login_complete_core(
         message=message,
         similarity_score=round(similarity, 3),  # Include score for research/debugging
         token=token,
+        retry_after_seconds=retry_after_seconds,
     )
 
 
@@ -384,6 +507,12 @@ def _replace_secret_for_user(
     llm_backend: SemanticLlmBackend,
 ) -> None:
     """Remove all existing secret embeddings for user and add one new one (text or voice)."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
     db.query(models.SecretEmbedding).filter(models.SecretEmbedding.user_id == user_id).delete()
     embedding_vector = semantic_service.embed(secret_text)
     raw_bytes = vector_to_bytes(embedding_vector)
@@ -398,6 +527,26 @@ def _replace_secret_for_user(
         model_name=settings.embedding_model_name,
     )
     db.add(secret_embedding)
+    try:
+        image_bytes, image_mime, seed, prompt_hash = generate_greeting_image(secret_text)
+    except Exception as exc:
+        logger.error(
+            "_replace_secret_for_user: greeting image failed user_id=%s hf_resolved=%s err=%s",
+            user_id,
+            bool(resolve_hf_api_token()),
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not generate your security greeting image. Please try again. ({exc})",
+        )
+    user.greeting_image_path = None
+    user.greeting_image_bytes = image_bytes
+    user.greeting_image_mime = image_mime
+    user.greeting_seed = seed
+    user.greeting_prompt_hash = prompt_hash
+    user.greeting_model_name = settings.image_model
 
 
 @router.post("/profile/secret", response_model=schemas.ProfileResponse)
@@ -503,4 +652,70 @@ def get_prompt_audio(challenge_id: int, db: Session = Depends(get_db)) -> Respon
         media_type="audio/wav",
         headers={"Content-Disposition": f'attachment; filename="prompt_{challenge_id}.wav"'},
     )
+
+
+@router.post("/recovery/unlock/request", response_model=schemas.RecoveryResponse)
+def request_unlock_recovery(
+    payload: schemas.RecoveryRequest,
+    db: Session = Depends(get_db),
+) -> schemas.RecoveryResponse:
+    """Issue an email recovery token for hard-locked accounts.
+
+    In this prototype, token is returned in response for local testing.
+    """
+    user = db.query(models.User).filter(
+        or_(models.User.username == payload.identifier, models.User.email == payload.identifier)
+    ).first()
+    generic = "If this account exists and is locked, a recovery message has been prepared."
+    if not user or not user.semantic_hard_locked:
+        return schemas.RecoveryResponse(message=generic)
+    if not user.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Locked account has no email on file for recovery.",
+        )
+
+    token = create_signed_token(
+        subject=str(user.id),
+        expires_minutes=30,
+        extra_claims={"purpose": "semantic_unlock", "email": user.email},
+    )
+    return schemas.RecoveryResponse(
+        message=generic,
+        recovery_token=token,
+    )
+
+
+@router.post("/recovery/unlock/confirm", response_model=schemas.RecoveryResponse)
+def confirm_unlock_recovery(
+    payload: schemas.RecoveryConfirmRequest,
+    db: Session = Depends(get_db),
+) -> schemas.RecoveryResponse:
+    """Confirm unlock token and clear hard lock state."""
+    token_payload = decode_access_token(payload.token)
+    if not token_payload or token_payload.get("purpose") != "semantic_unlock":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired recovery token.",
+        )
+    try:
+        user_id = int(token_payload["sub"])
+    except (TypeError, ValueError, KeyError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid recovery token payload.",
+        )
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    user.semantic_hard_locked = False
+    user.semantic_failed_attempts = 0
+    user.semantic_lock_step = 0
+    user.semantic_locked_until = None
+    db.commit()
+    return schemas.RecoveryResponse(message="Account unlocked. You can sign in again.")
 
