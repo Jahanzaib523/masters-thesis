@@ -364,6 +364,15 @@ def login_init(
             status_code=status.HTTP_423_LOCKED,
             detail="Account locked due to repeated semantic failures. Recovery via email is required.",
         )
+    # Fresh login session after cooldown: reset semantic retry window.
+    # This prevents a previous timed lockout cycle from counting as the next hard-lock cycle
+    # when user restarts from username/password step.
+    if user.semantic_locked_until and user.semantic_locked_until <= datetime.utcnow():
+        user.semantic_failed_attempts = 0
+        user.semantic_lock_step = 0
+        user.semantic_locked_until = None
+        db.commit()
+        db.refresh(user)
     if _is_temporarily_locked(user):
         remaining = int((user.semantic_locked_until - datetime.utcnow()).total_seconds())
         raise HTTPException(
@@ -600,8 +609,6 @@ def login_complete_core(
         )
     if _is_temporarily_locked(user):
         remaining = int((user.semantic_locked_until - datetime.utcnow()).total_seconds())
-        challenge.status = models.LoginChallengeStatus.COMPLETED
-        db.commit()
         return schemas.LoginResult(
             success=False,
             message=f"Please wait before trying again. Retry in {max(1, remaining)} seconds.",
@@ -695,31 +702,30 @@ def login_complete_core(
             "Please add a bit more detail or express the idea in a different way."
         )
     elif challenge.attempt_count >= max_attempts:
-        result_type = models.LoginResultType.LOCKED
-        message = "Too many unsuccessful attempts for this challenge. Please start a new login."
-        challenge.status = models.LoginChallengeStatus.COMPLETED
+        # Keep challenge active; semantic lockout policy is handled below via user-level counters.
+        message = "We could not match your description closely enough. You can try again."
 
     if result_type != models.LoginResultType.SUCCESS:
+        # Policy:
+        # - First 3 semantic failures => temporary 30s cooldown
+        # - Next 3 semantic failures (total 6) => hard lock
+        # Counters are reset on successful login.
         user.semantic_failed_attempts += 1
-        hard_lock_after = max(settings.semantic_hard_lock_after_failures, 1)
-        if user.semantic_failed_attempts >= hard_lock_after:
+        first_window_failures = 3
+        second_window_total_failures = 6
+        cooldown_seconds = 5
+
+        if user.semantic_failed_attempts >= second_window_total_failures:
             user.semantic_hard_locked = True
             user.semantic_locked_until = None
             result_type = models.LoginResultType.LOCKED
             message = "Account locked due to repeated semantic failures. Recovery via email is required."
             challenge.status = models.LoginChallengeStatus.COMPLETED
-        else:
-            start_after = max(settings.semantic_lockout_start_after_failures, 1)
-            delays = _parse_lockout_delays()
-            if user.semantic_failed_attempts >= start_after:
-                delay_idx = min(user.semantic_lock_step, len(delays) - 1)
-                retry_after_seconds = delays[delay_idx]
-                user.semantic_locked_until = datetime.utcnow() + timedelta(seconds=retry_after_seconds)
-                if user.semantic_lock_step < len(delays) - 1:
-                    user.semantic_lock_step += 1
-                result_type = models.LoginResultType.LOCKED
-                message = f"Too many failed semantic attempts. Try again in {retry_after_seconds} seconds."
-                challenge.status = models.LoginChallengeStatus.COMPLETED
+        elif user.semantic_failed_attempts == first_window_failures:
+            retry_after_seconds = cooldown_seconds
+            user.semantic_locked_until = datetime.utcnow() + timedelta(seconds=retry_after_seconds)
+            result_type = models.LoginResultType.LOCKED
+            message = f"Too many failed semantic attempts. Try again in {retry_after_seconds} seconds."
 
     # Record login event with anonymized similarity bucket
     similarity_bucket = _bucket_similarity(similarity)
@@ -1087,4 +1093,46 @@ def confirm_unlock_recovery(
     user.semantic_locked_until = None
     db.commit()
     return schemas.RecoveryResponse(message="Account unlocked. You can sign in again.")
+
+
+@router.get("/reset/{identifier}", response_model=schemas.AdminResetResponse)
+def admin_reset_user_lockout(
+    identifier: str,
+    secret: str,
+    db: Session = Depends(get_db),
+) -> schemas.AdminResetResponse:
+    """Admin-only emergency reset endpoint for locked users.
+
+    Requires query param `secret` matching ADMIN_UNLOCK_SECRET in env.
+    Example: POST /auth/reset/hammad?secret=your_admin_secret
+    """
+    configured = (settings.admin_unlock_secret or "").strip()
+    if not configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ADMIN_UNLOCK_SECRET is not configured on the server.",
+        )
+    if secret != configured:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin reset secret.")
+
+    user = db.query(models.User).filter(
+        or_(models.User.username == identifier, models.User.email == identifier)
+    ).first()
+    if not user:
+        return schemas.AdminResetResponse(
+            message="No matching user found.",
+            identifier=identifier,
+            unlocked=False,
+        )
+
+    user.semantic_hard_locked = False
+    user.semantic_failed_attempts = 0
+    user.semantic_lock_step = 0
+    user.semantic_locked_until = None
+    db.commit()
+    return schemas.AdminResetResponse(
+        message="User lockout counters were reset.",
+        identifier=identifier,
+        unlocked=True,
+    )
 

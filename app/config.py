@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str | None = None
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60
+    admin_unlock_secret: str | None = None
 
     @model_validator(mode="after")
     def _normalize_hf_tokens(self):

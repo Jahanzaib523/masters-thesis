@@ -295,6 +295,12 @@ class RecoveryResponse(BaseModel):
     recovery_token: Optional[str] = None
 
 
+class AdminResetResponse(BaseModel):
+    message: str
+    identifier: str
+    unlocked: bool
+
+
 # ---- System / utility schemas ----
 
 

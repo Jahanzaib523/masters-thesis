@@ -32,6 +32,7 @@ export function Login() {
   const [recording, setRecording] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [locked, setLocked] = useState(false)
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const recordedBlob = useRef<Blob | null>(null)
@@ -118,6 +119,20 @@ export function Login() {
       navigate('/profile', { replace: true })
     }
   }, [navigate])
+
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return
+    const timer = window.setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [cooldownRemaining])
 
   const startRecording = async () => {
     try {
@@ -211,11 +226,16 @@ export function Login() {
       const isLocked = lowered.includes('too many') || lowered.includes('locked') || lowered.includes('wait')
       const waitSuffix = result.retry_after_seconds ? ` (${result.retry_after_seconds}s)` : ''
       setError(`${result.message}${waitSuffix}`)
+      if (result.retry_after_seconds && result.retry_after_seconds > 0) {
+        setCooldownRemaining(result.retry_after_seconds)
+      } else {
+        setCooldownRemaining(0)
+      }
       if (responseType === 'voice') {
         recordedBlob.current = null
         setAudioUrl(null)
       }
-      if (isLocked) {
+      if (isLocked && !result.retry_after_seconds) {
         setLocked(true)
       }
     } catch (err) {
@@ -388,6 +408,11 @@ export function Login() {
           <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-100" role="alert">
             <p>{error}</p>
             <p className="mt-1 text-red-600/90">Check the details above and try again.</p>
+            {cooldownRemaining > 0 && (
+              <p className="mt-1 text-red-700/90">
+                You can try again in <strong>{cooldownRemaining}s</strong>.
+              </p>
+            )}
           </div>
         )}
 
@@ -402,6 +427,7 @@ export function Login() {
                 setGreetingGalleryUrls([])
                 setSemanticRequired(true)
                 setLocked(false)
+                setCooldownRemaining(0)
                 setError(null)
                 setResponseText('')
                 setPassword('')
@@ -468,11 +494,12 @@ export function Login() {
             <button
               type="submit"
               disabled={loading || locked}
+              disabled={loading || locked || cooldownRemaining > 0}
               aria-busy={loading}
               className="flex-1 rounded-xl bg-sky-600 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-sky-700 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:opacity-50 inline-flex items-center justify-center min-touch"
             >
               {loading && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
-              {loading ? 'Checking…' : locked ? 'Start over above' : 'Sign in'}
+              {loading ? 'Checking…' : locked ? 'Start over above' : cooldownRemaining > 0 ? `Retry in ${cooldownRemaining}s` : 'Sign in'}
             </button>
           </div>
           <p className="mt-4 text-right text-sm text-slate-500">
