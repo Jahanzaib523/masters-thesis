@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { Step } from 'react-joyride'
-import { api, getToken, setToken, userFriendlyMessage } from '../api'
+import { api, ApiError, getToken, setToken, userFriendlyMessage } from '../api'
 import type { LoginResult } from '../api'
 import { PageTour } from '../tour/PageTour'
 import { TOUR_STORAGE } from '../tour/storageKeys'
@@ -18,13 +18,14 @@ export function Login() {
   const location = useLocation()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState<'id' | 'response'>('id')
+  const [step, setStep] = useState<'id' | 'gallery' | 'response'>('id')
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [challengeId, setChallengeId] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
-  const [greetingImageUrl, setGreetingImageUrl] = useState<string | null>(null)
-  const [showGreetingImage, setShowGreetingImage] = useState(false)
+  const [greetingGalleryUrls, setGreetingGalleryUrls] = useState<string[]>([])
+  const [galleryPicking, setGalleryPicking] = useState(false)
+  const [semanticRequired, setSemanticRequired] = useState(true)
   const [secretType, setSecretType] = useState<string>('text')
   const [responseType, setResponseType] = useState<ResponseType>('text')
   const [responseText, setResponseText] = useState('')
@@ -44,13 +45,13 @@ export function Login() {
         placement: 'center',
         title: 'Welcome',
         content:
-          'Semantic sign-in uses your password plus a secret you describe in your own words. This tour walks through the two steps.',
+          'Semantic sign-in uses your password, then you pick your security image from six tiles, then you describe your secret in your own words.',
         disableBeacon: true,
       },
       {
         target: '[data-tour="login-step-badge"]',
-        title: 'Two steps',
-        content: 'First you prove who you are with username/email and password. Then you verify your semantic secret.',
+        title: 'Three steps',
+        content: 'First credentials, then pick your security image from six options, then verify your semantic secret.',
       },
       {
         target: '[data-tour="login-heading-block"]',
@@ -70,7 +71,7 @@ export function Login() {
       {
         target: '[data-tour="login-continue"]',
         title: 'Continue',
-        content: 'When your credentials are correct, you’ll go to step 2 to describe or speak your secret.',
+        content: 'When your credentials are correct, you’ll pick your security image, then describe or speak your secret.',
       },
     ],
     []
@@ -118,19 +119,6 @@ export function Login() {
     }
   }, [navigate])
 
-  useEffect(() => {
-    if (step !== 'response' || !greetingImageUrl) {
-      setShowGreetingImage(false)
-      return
-    }
-    setShowGreetingImage(false)
-    const randomDelayMs = 700 + Math.floor(Math.random() * 2300) // 0.7s to 3.0s
-    const timer = window.setTimeout(() => {
-      setShowGreetingImage(true)
-    }, randomDelayMs)
-    return () => window.clearTimeout(timer)
-  }, [step, greetingImageUrl, challengeId])
-
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -170,10 +158,11 @@ export function Login() {
       const res = await api.loginInit(identifier, password)
       setChallengeId(res.challenge_id)
       setPrompt(res.prompt)
-      setGreetingImageUrl(res.greeting_image_url ?? null)
+      setGreetingGalleryUrls(res.greeting_gallery_urls ?? [])
+      setSemanticRequired(res.semantic_required ?? true)
       setSecretType(res.secret_type ?? 'text')
       setResponseType((res.secret_type as ResponseType) === 'voice' ? 'voice' : 'text')
-      setStep('response')
+      setStep('gallery')
     } catch (err) {
       setError(userFriendlyMessage(err instanceof Error ? err.message : 'Could not start sign-in', 'auth'))
     } finally {
@@ -236,13 +225,127 @@ export function Login() {
     }
   }
 
+  const handleGalleryPick = async (slot: number) => {
+    if (challengeId == null || galleryPicking) return
+    setError(null)
+    setGalleryPicking(true)
+    try {
+      const result = await api.pickGreetingImage(challengeId, slot)
+      if (result.success) {
+        if (result.token) {
+          setToken(result.token)
+          navigate('/profile', { replace: true })
+          return
+        }
+        if (semanticRequired) {
+          setStep('response')
+        } else {
+          setError('Image verified, but no token returned. Please start over.')
+        }
+        return
+      }
+      const left =
+        result.remaining_attempts != null
+          ? ` (${result.remaining_attempts} attempt${result.remaining_attempts === 1 ? '' : 's'} left)`
+          : ''
+      setError(`${result.message}${left}`)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 423) {
+        setLocked(true)
+        setError(userFriendlyMessage(err.message, 'auth'))
+      } else {
+        setError(userFriendlyMessage(err instanceof Error ? err.message : 'Selection failed', 'auth'))
+      }
+    } finally {
+      setGalleryPicking(false)
+    }
+  }
+
+  if (step === 'gallery' && challengeId != null) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
+        <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 2 of 3</span>
+        </div>
+        {registered && (
+          <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800 ring-1 ring-green-100">Registration successful. Pick your security image below.</p>
+        )}
+        <h2 className="text-xl font-semibold text-slate-800">Pick your security image</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Choose the illustration you saved at registration. Five other images are decoys. Three wrong picks lock your account.
+        </p>
+        {error && (
+          <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-100" role="alert">
+            <p>{error}</p>
+          </div>
+        )}
+        {locked && (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setStep('id')
+                setChallengeId(null)
+                setPrompt('')
+                setGreetingGalleryUrls([])
+                setSemanticRequired(true)
+                setLocked(false)
+                setError(null)
+                setPassword('')
+              }}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 focus:ring-2 focus:ring-amber-500"
+            >
+              Start over
+            </button>
+          </div>
+        )}
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {greetingGalleryUrls.map((url, slot) => (
+            <button
+              key={slot}
+              type="button"
+              disabled={galleryPicking || locked}
+              onClick={() => void handleGalleryPick(slot)}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-2 transition hover:border-sky-400 hover:shadow-md disabled:opacity-50"
+            >
+              <img
+                src={url}
+                alt={`Security image option ${slot + 1}`}
+                className="mx-auto h-28 w-full max-w-[140px] rounded-md object-cover"
+              />
+              <span className="mt-1 block text-center text-xs text-slate-500">Option {slot + 1}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setStep('id')
+              setChallengeId(null)
+              setGreetingGalleryUrls([])
+              setSemanticRequired(true)
+              setError(null)
+            }}
+            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Back
+          </button>
+        </div>
+        <p className="mt-4 text-right text-sm text-slate-500">
+          No account? <Link to="/register" className="font-medium text-sky-600 hover:text-sky-700 hover:underline">Register</Link>
+        </p>
+      </div>
+    )
+  }
+
   if (step === 'response') {
     return (
       <>
         <PageTour storageKey={TOUR_STORAGE.loginVerify} steps={loginVerifySteps} />
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
         <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
-          <span data-tour="login-verify-badge" className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 2 of 2</span>
+          <span data-tour="login-verify-badge" className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 3 of 3</span>
         </div>
         {registered && (
           <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800 ring-1 ring-green-100">Registration successful. Complete sign in below.</p>
@@ -251,22 +354,6 @@ export function Login() {
           <h2 className="text-xl font-semibold text-slate-800">Verify your secret</h2>
           <p className="mt-2 text-slate-600">{prompt}</p>
         </div>
-        {greetingImageUrl && (
-          <div
-            className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 transition-opacity duration-500 ${
-              showGreetingImage ? 'opacity-100' : 'opacity-0'
-            }`}
-            aria-hidden={!showGreetingImage}
-          >
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Secret Greeting</p>
-            <img
-              src={greetingImageUrl}
-              alt="Your personal security greeting illustration"
-              className="mx-auto h-36 w-28 rounded-md border border-slate-200 bg-white object-cover"
-            />
-          </div>
-        )}
-
         {(secretType === 'voice' || responseType === 'voice') && (
           <div className="mt-4">
             <button
@@ -312,7 +399,8 @@ export function Login() {
                 setStep('id')
                 setChallengeId(null)
                 setPrompt('')
-                setGreetingImageUrl(null)
+                setGreetingGalleryUrls([])
+                setSemanticRequired(true)
                 setLocked(false)
                 setError(null)
                 setResponseText('')
@@ -401,14 +489,14 @@ export function Login() {
       <PageTour storageKey={TOUR_STORAGE.loginCredentials} steps={loginCredentialSteps} />
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
       <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
-        <span data-tour="login-step-badge" className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 1 of 2</span>
+        <span data-tour="login-step-badge" className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 1 of 3</span>
       </div>
       {registered && (
         <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800 ring-1 ring-green-100">Registration successful. Sign in below.</p>
       )}
       <div data-tour="login-heading-block">
         <h2 className="text-xl font-semibold text-slate-800">Sign in</h2>
-        <p className="mt-1 text-sm text-slate-500">Enter your username or email and password, then you&apos;ll verify your secret phrase.</p>
+        <p className="mt-1 text-sm text-slate-500">Enter your username or email and password. Next you&apos;ll pick your security image, then verify your secret phrase.</p>
       </div>
 
       {error && (

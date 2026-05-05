@@ -104,6 +104,36 @@ def generate_semantic_summary(text: str) -> Optional[str]:
         return None
 
 
+def generate_text_with_prompt(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 300,
+) -> Optional[str]:
+    """Generic Groq chat helper for specialized tasks (e.g. JSON decoy prompt generation)."""
+    try:
+        client = get_groq_client()
+    except RuntimeError as exc:
+        logger.warning("Groq client not available for generic prompt: %s", exc)
+        return None
+
+    try:
+        completion = client.chat.completions.create(
+            model=settings.groq_model_id,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed generic Groq chat prompt: %s", exc)
+        return None
+
+
 # =============================================================================
 # SPEECH-TO-TEXT (STT) - Groq Whisper
 # =============================================================================

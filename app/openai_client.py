@@ -88,3 +88,34 @@ def generate_semantic_summary(text: str) -> Optional[str]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to generate semantic summary via OpenAI: %s", exc)
         return None
+
+
+def generate_text_with_prompt(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 300,
+) -> Optional[str]:
+    """Generic OpenAI chat helper for specialized tasks (e.g. JSON decoy prompt generation)."""
+    try:
+        client = get_openai_client()
+    except RuntimeError as exc:
+        logger.warning("OpenAI client not available for generic prompt: %s", exc)
+        return None
+
+    try:
+        completion = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        msg = completion.choices[0].message
+        return (msg.content or "").strip() or None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed generic OpenAI chat prompt: %s", exc)
+        return None

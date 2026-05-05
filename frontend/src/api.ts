@@ -48,6 +48,14 @@ export type LoginInitResponse = {
   secret_type: string
   audio_prompt_available: boolean
   greeting_image_url?: string | null
+  greeting_gallery_urls?: string[]
+}
+
+export type GreetingImagePickResult = {
+  success: boolean
+  message: string
+  token?: string
+  remaining_attempts?: number | null
 }
 
 export type LoginResult = {
@@ -66,6 +74,7 @@ export type ProfileResponse = {
   email?: string | null
   created_at: string
   secret_type: 'text' | 'voice'
+  login_mode: 'both' | 'image_only'
 }
 
 export class ApiError extends Error {
@@ -104,6 +113,10 @@ export function userFriendlyMessage(message: string, _context?: 'auth' | 'profil
     return 'This account is locked for security. Use account recovery via your email.'
   if (m.includes('could not match') || m.includes('similarity'))
     return "That didn't match what we have on file. You can try again with a different way of describing your secret."
+  if (m.includes('select your security greeting image'))
+    return 'Choose your security image from the grid first, then answer the secret question.'
+  if (m.includes('image-only login'))
+    return 'Your account is set to image-only login. Complete sign-in from the image selection step.'
   if (m.includes('openai') && m.includes('not configured'))
     return 'OpenAI was selected but the server is not configured for it. Turn off “Use OpenAI” or ask the administrator to set OPENAI_API_KEY.'
   if (m.includes('hugging face') || m.includes('hf_api_token'))
@@ -140,6 +153,19 @@ export const api = {
     return handleRes(r)
   },
 
+  async previewGreetingImage(image_text: string): Promise<Blob> {
+    const r = await fetch(`${API_BASE}/auth/register/preview-greeting-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...semanticLlmHeaders() },
+      body: JSON.stringify({ image_text }),
+    })
+    if (!r.ok) {
+      await handleRes(r)
+      throw new ApiError('Preview failed', r.status)
+    }
+    return r.blob()
+  },
+
   async registerVoice(form: FormData): Promise<UserPublic> {
     const r = await fetch(`${API_BASE}/auth/voice/register`, {
       method: 'POST',
@@ -154,6 +180,15 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, password, mode: mode ?? 'text' }),
+    })
+    return handleRes(r)
+  },
+
+  async pickGreetingImage(challengeId: number, selectedSlot: number): Promise<GreetingImagePickResult> {
+    const r = await fetch(`${API_BASE}/auth/login/challenge/${challengeId}/pick-greeting-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selected_slot: selectedSlot }),
     })
     return handleRes(r)
   },
@@ -190,6 +225,10 @@ export const api = {
     return handleRes(r)
   },
 
+  getProfileGreetingImageUrl(): string {
+    return `${API_BASE}/auth/profile/greeting-image`
+  },
+
   async updateProfile(payload: { username?: string; email?: string | null; new_password?: string }): Promise<ProfileResponse> {
     const r = await fetch(`${API_BASE}/auth/profile`, {
       method: 'PATCH',
@@ -213,6 +252,24 @@ export const api = {
       method: 'POST',
       headers: { ...authHeaders(), ...semanticLlmHeaders() },
       body: form,
+    })
+    return handleRes(r)
+  },
+
+  async updateProfileGreetingImage(image_text: string): Promise<ProfileResponse> {
+    const r = await fetch(`${API_BASE}/auth/profile/greeting-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ image_text }),
+    })
+    return handleRes(r)
+  },
+
+  async updateLoginMode(login_mode: 'both' | 'image_only'): Promise<ProfileResponse> {
+    const r = await fetch(`${API_BASE}/auth/profile/login-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ login_mode }),
     })
     return handleRes(r)
   },

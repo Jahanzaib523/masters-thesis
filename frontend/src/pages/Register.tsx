@@ -8,6 +8,7 @@ import { TOUR_STORAGE } from '../tour/storageKeys'
 type RegisterType = 'text' | 'voice'
 
 const SECRET_MAX_CHARS = 100
+const PASSWORD_POLICY_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/
 
 const TYPE_OPTIONS: { value: RegisterType; label: string; icon: string; hint: string }[] = [
   { value: 'text', label: 'Text', icon: '✏️', hint: 'Type a secret phrase' },
@@ -25,6 +26,9 @@ export function Register() {
   const [password, setPassword] = useState('')
   const [secretText, setSecretText] = useState('')
   const [imageText, setImageText] = useState('')
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [previewReady, setPreviewReady] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [recording, setRecording] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
@@ -72,6 +76,12 @@ export function Register() {
     }
   }, [navigate])
 
+  useEffect(() => {
+    return () => {
+      if (previewImageUrl) URL.revokeObjectURL(previewImageUrl)
+    }
+  }, [previewImageUrl])
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -97,15 +107,15 @@ export function Register() {
     setRecording(false)
   }
 
-  const emailInvalid = email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-  const passwordInvalid = password.length < 8
+  const emailInvalid = email.trim() !== '' && !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email.trim())
+  const passwordInvalid = !PASSWORD_POLICY_RE.test(password)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     if (emailInvalid) return
     if (passwordInvalid) {
-      setError('Password must be at least 8 characters. You need it every time you sign in.')
+      setError('Password must be at least 8 chars and include uppercase, lowercase, number, and special character.')
       return
     }
     if (type === 'text') {
@@ -126,6 +136,22 @@ export function Register() {
     }
     if (imagePrompt.length > SECRET_MAX_CHARS) {
       setError(`Image text must be at most ${SECRET_MAX_CHARS} characters.`)
+      return
+    }
+    if (!previewReady) {
+      setPreviewLoading(true)
+      try {
+        const blob = await api.previewGreetingImage(imagePrompt)
+        setPreviewImageUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return URL.createObjectURL(blob)
+        })
+        setPreviewReady(true)
+      } catch (err) {
+        setError(userFriendlyMessage(err instanceof Error ? err.message : 'Preview failed', 'register'))
+      } finally {
+        setPreviewLoading(false)
+      }
       return
     }
     setLoading(true)
@@ -236,7 +262,7 @@ export function Register() {
           </div>
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password (required, min 8 characters)</label>
+          <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password (required: 8+ with upper, lower, number, special)</label>
           <input
             id="password"
             name="password"
@@ -252,7 +278,7 @@ export function Register() {
             aria-invalid={password.length > 0 && passwordInvalid}
           />
           {password.length > 0 && passwordInvalid && (
-            <p className="mt-1 text-sm text-red-600">Use at least 8 characters.</p>
+            <p className="mt-1 text-sm text-red-600">Use 8+ chars with uppercase, lowercase, number, and special character.</p>
           )}
         </div>
         </div>
@@ -317,6 +343,7 @@ export function Register() {
               rows={2}
               value={imageText}
               onChange={(e) => setImageText(e.target.value)}
+              onInput={() => { setPreviewReady(false); if (previewImageUrl) { URL.revokeObjectURL(previewImageUrl); setPreviewImageUrl(null) } }}
               className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
               placeholder="e.g. blue mountain with moon and river"
             />
@@ -326,10 +353,23 @@ export function Register() {
           </div>
         </div>
 
+        {previewImageUrl && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-700">Preview your security image</p>
+            <p className="text-xs text-slate-500">Remember this image. You will pick it during sign-in.</p>
+            <img
+              src={previewImageUrl}
+              alt="Registration greeting preview"
+              className="mt-2 h-40 w-40 rounded-md border border-slate-200 object-cover"
+            />
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={
             loading ||
+            previewLoading ||
             emailInvalid ||
             passwordInvalid ||
             (type === 'text' && (!secretText.trim() || secretText.length > SECRET_MAX_CHARS)) ||
@@ -340,8 +380,8 @@ export function Register() {
           data-tour="register-submit"
           className="w-full rounded-xl bg-sky-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:opacity-50 inline-flex items-center justify-center min-touch"
         >
-          {loading && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
-          {loading ? 'Creating account…' : 'Register'}
+          {(loading || previewLoading) && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
+          {loading ? 'Creating account…' : previewLoading ? 'Generating preview…' : previewReady ? 'Confirm and register' : 'Preview image'}
         </button>
         <p className="mt-4 text-right text-sm text-slate-500">
           Already have an account? <Link to="/login" className="font-medium text-sky-600 hover:text-sky-700 hover:underline">Sign in</Link>

@@ -214,6 +214,22 @@ def get_image_generation_health() -> dict[str, Any]:
     return health
 
 
+def generate_decoy_greeting_image(challenge_id: int, decoy_index: int, decoy_text: str) -> tuple[bytes, str]:
+    """HF-generated decoy unrelated to any user secret (deterministic per challenge + index)."""
+    prompt = (
+        f"Create a decoy security illustration representing: '{decoy_text}'. "
+        "Must be unrelated to any specific user's secret image. "
+        "No text, no letters, no numbers, no watermark, no logos. "
+        f"Style: {settings.image_style_preset}."
+    )
+    seed = int(
+        hashlib.sha256(f"decoy:{challenge_id}:{decoy_index}".encode("utf-8")).hexdigest()[:8],
+        16,
+    )
+    image_bytes = _generate_image_hf(prompt, seed)
+    return image_bytes, "image/png"
+
+
 def generate_greeting_image(secret_text: str) -> tuple[bytes, str, int, str]:
     """Generate deterministic greeting image bytes and reproducibility metadata."""
     provider = settings.image_provider.lower().strip()

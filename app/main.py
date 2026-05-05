@@ -118,9 +118,49 @@ def _ensure_user_greeting_image_columns() -> None:
             conn.execute(text("ALTER TABLE users ADD COLUMN greeting_image_bytes BLOB"))
         if "greeting_image_mime" not in cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN greeting_image_mime VARCHAR(64)"))
+        if "login_mode" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN login_mode VARCHAR(32) NOT NULL DEFAULT 'both'"))
 
 
 _ensure_user_greeting_image_columns()
+
+
+def _ensure_login_challenge_gallery() -> None:
+    """Migrations for 6-image login gallery and challenge verification columns."""
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        tables = inspector.get_table_names()
+        if "login_challenges" in tables:
+            cols = {c["name"] for c in inspector.get_columns("login_challenges")}
+            if "image_gallery_verified_at" not in cols:
+                conn.execute(text("ALTER TABLE login_challenges ADD COLUMN image_gallery_verified_at DATETIME"))
+            if "image_pick_failures" not in cols:
+                conn.execute(text("ALTER TABLE login_challenges ADD COLUMN image_pick_failures INTEGER NOT NULL DEFAULT 0"))
+        if "login_challenge_gallery_slots" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE login_challenge_gallery_slots (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        challenge_id INTEGER NOT NULL,
+                        slot INTEGER NOT NULL,
+                        image_bytes BLOB NOT NULL,
+                        image_mime VARCHAR(64) NOT NULL,
+                        is_target INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(challenge_id) REFERENCES login_challenges (id)
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_gallery_challenge_slot "
+                    "ON login_challenge_gallery_slots (challenge_id, slot)"
+                )
+            )
+
+
+_ensure_login_challenge_gallery()
 
 log_hf_env_diagnostics()
 

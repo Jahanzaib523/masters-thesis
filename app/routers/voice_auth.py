@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -44,14 +45,18 @@ async def voice_register_service(
             ),
         )
 
-    payload = schemas.UserCreate(
-        username=username,
-        email=email,
-        password=password,
-        secret_text=secret_text,
-        image_text=image_text,
-        secret_type="voice",
-    )
+    try:
+        payload = schemas.UserCreate(
+            username=username,
+            email=email,
+            password=password,
+            secret_text=secret_text,
+            image_text=image_text,
+            secret_type="voice",
+        )
+    except ValidationError as exc:
+        first = exc.errors()[0].get("msg", "Invalid input.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(first)) from exc
     return register_user_core(payload, db, llm_backend)
 
 
@@ -75,11 +80,12 @@ def voice_login_init(
     identifier: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ):
     """Initialize voice login challenge (same as text init, just form-based)."""
 
     payload = schemas.LoginInitRequest(identifier=identifier, password=password)
-    return login_init(payload, db)
+    return login_init(payload, db, llm_backend)
 
 
 async def voice_login_complete_service(

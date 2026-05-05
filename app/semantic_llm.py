@@ -18,3 +18,27 @@ def score_semantic_similarity(secret_text: str, attempt_text: str, backend: Sema
     if backend == SemanticLlmBackend.openai:
         return openai_client.score_semantic_similarity(secret_text, attempt_text)
     return groq_client.score_semantic_similarity(secret_text, attempt_text)
+
+
+def generate_text_with_prompt(
+    system_prompt: str,
+    user_prompt: str,
+    backend: SemanticLlmBackend,
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 300,
+) -> Optional[str]:
+    """Dispatch generic text generation to selected backend."""
+    if backend == SemanticLlmBackend.openai:
+        return openai_client.generate_text_with_prompt(
+            system_prompt,
+            user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    return groq_client.generate_text_with_prompt(
+        system_prompt,
+        user_prompt,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )

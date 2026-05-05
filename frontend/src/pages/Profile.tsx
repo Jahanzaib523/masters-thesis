@@ -28,6 +28,12 @@ export function Profile() {
   const [secretSuccess, setSecretSuccess] = useState(false)
   const [confirmSecretReplace, setConfirmSecretReplace] = useState<'text' | 'voice' | null>(null)
   const [secretTab, setSecretTab] = useState<SecretTab>('text')
+  const [greetingImageText, setGreetingImageText] = useState('')
+  const [greetingSaving, setGreetingSaving] = useState(false)
+  const [greetingSuccess, setGreetingSuccess] = useState(false)
+  const [currentGreetingUrl, setCurrentGreetingUrl] = useState<string | null>(null)
+  const [loginMode, setLoginMode] = useState<'both' | 'image_only'>('both')
+  const [modeSaving, setModeSaving] = useState(false)
   const [recording, setRecording] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
@@ -46,6 +52,7 @@ export function Profile() {
         setProfile(p)
         setUsername(p.username)
         setEmail(p.email ?? '')
+        setLoginMode(p.login_mode ?? 'both')
         setSecretTab((p.secret_type as SecretTab) === 'voice' ? 'voice' : 'text')
       })
       .catch((err) => {
@@ -58,6 +65,33 @@ export function Profile() {
       })
       .finally(() => setLoading(false))
   }, [navigate])
+
+  useEffect(() => {
+    const token = getToken()
+    if (!token || !profile) return
+    fetch(api.getProfileGreetingImageUrl(), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text())
+        return res.blob()
+      })
+      .then((blob) => {
+        setCurrentGreetingUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return URL.createObjectURL(blob)
+        })
+      })
+      .catch(() => {
+        setCurrentGreetingUrl(null)
+      })
+  }, [profile])
+
+  useEffect(() => {
+    return () => {
+      if (currentGreetingUrl) URL.revokeObjectURL(currentGreetingUrl)
+    }
+  }, [currentGreetingUrl])
 
   const emailInvalid = profile ? (email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) : false
 
@@ -114,6 +148,46 @@ export function Profile() {
   const cancelReplaceSecret = () => {
     setConfirmSecretReplace(null)
     pendingVoiceFile.current = null
+  }
+
+  const handleUpdateGreetingImage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const t = greetingImageText.trim()
+    if (!t) {
+      setError('Enter text to generate your new security image.')
+      return
+    }
+    if (t.length > SECRET_MAX_CHARS) {
+      setError(`Image text must be at most ${SECRET_MAX_CHARS} characters.`)
+      return
+    }
+    setError(null)
+    setGreetingSuccess(false)
+    setGreetingSaving(true)
+    try {
+      const p = await api.updateProfileGreetingImage(t)
+      setProfile(p)
+      setGreetingSuccess(true)
+      setGreetingImageText('')
+    } catch (err) {
+      setError(userFriendlyMessage(err instanceof Error ? err.message : 'Update failed', 'profile'))
+    } finally {
+      setGreetingSaving(false)
+    }
+  }
+
+  const handleUpdateLoginMode = async (mode: 'both' | 'image_only') => {
+    setError(null)
+    setModeSaving(true)
+    try {
+      const p = await api.updateLoginMode(mode)
+      setProfile(p)
+      setLoginMode(p.login_mode)
+    } catch (err) {
+      setError(userFriendlyMessage(err instanceof Error ? err.message : 'Mode update failed', 'profile'))
+    } finally {
+      setModeSaving(false)
+    }
   }
 
   const confirmReplaceSecret = async () => {
@@ -405,6 +479,82 @@ export function Profile() {
         )}
 
         {secretSuccess && <p className="mt-3 text-sm text-green-600" role="status">Secret updated.</p>}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-800">Login mode</h2>
+        <p className="mt-1 text-sm text-slate-500">Choose whether login requires both image + semantic step, or image-only.</p>
+        <div className="mt-3 flex gap-2 rounded-xl bg-slate-100 p-1.5">
+          <button
+            type="button"
+            disabled={modeSaving}
+            onClick={() => void handleUpdateLoginMode('both')}
+            className={`flex-1 rounded-lg py-2 px-3 text-sm font-medium ${loginMode === 'both' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-200/60'}`}
+          >
+            Both (image + semantic)
+          </button>
+          <button
+            type="button"
+            disabled={modeSaving}
+            onClick={() => void handleUpdateLoginMode('image_only')}
+            className={`flex-1 rounded-lg py-2 px-3 text-sm font-medium ${loginMode === 'image_only' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-200/60'}`}
+          >
+            Image only
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-800">Security greeting image</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          The image you recognize at sign-in (six-tile pick). Updating only changes this image—your semantic secret phrase stays the same until you change it above.
+        </p>
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Current security image</p>
+          {currentGreetingUrl ? (
+            <img
+              src={currentGreetingUrl}
+              alt="Current security greeting"
+              className="mt-2 h-32 w-32 rounded-md border border-slate-200 object-cover"
+            />
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">No image preview available.</p>
+          )}
+        </div>
+        <form onSubmit={handleUpdateGreetingImage} className="mt-4 space-y-3">
+          <label htmlFor="profile-greeting-image" className="block text-sm font-medium text-slate-700">
+            New image text (required, max {SECRET_MAX_CHARS} characters)
+          </label>
+          <textarea
+            id="profile-greeting-image"
+            rows={2}
+            value={greetingImageText}
+            onChange={(e) => setGreetingImageText(e.target.value)}
+            className="block w-full rounded-lg border border-slate-300 px-3 py-2"
+            placeholder="Describe the illustration you will recognize at login"
+            minLength={1}
+            maxLength={SECRET_MAX_CHARS}
+          />
+          <p className="text-xs text-slate-500" aria-live="polite">
+            {greetingImageText.length}/{SECRET_MAX_CHARS} characters
+          </p>
+          <button
+            type="submit"
+            disabled={
+              greetingSaving ||
+              !greetingImageText.trim() ||
+              greetingImageText.trim().length > SECRET_MAX_CHARS
+            }
+            aria-busy={greetingSaving}
+            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center"
+          >
+            {greetingSaving && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
+            {greetingSaving ? 'Generating…' : 'Update security image'}
+          </button>
+          {greetingSuccess && (
+            <p className="text-sm text-green-600" role="status">Security image updated. Use this image next time you sign in.</p>
+          )}
+        </form>
       </section>
     </div>
   )

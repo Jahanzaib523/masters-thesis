@@ -1,5 +1,9 @@
 from datetime import datetime, timedelta
+import json
 import logging
+import secrets
+import hashlib
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -15,15 +19,180 @@ from ..security import encrypt_embedding, decrypt_embedding, encrypt_text, decry
 from ..semantic import semantic_service, vector_to_bytes, bytes_to_vector
 from ..groq_client import synthesize_speech, transcribe_audio
 from ..llm_provider import SemanticLlmBackend, get_semantic_llm_backend
-from ..semantic_llm import generate_semantic_summary, score_semantic_similarity
+from ..semantic_llm import generate_semantic_summary, generate_text_with_prompt, score_semantic_similarity
 from ..passwords import hash_password, verify_password
 from ..tokens import create_access_token, create_signed_token, decode_access_token
 from ..config import resolve_hf_api_token
-from ..greeting_image import generate_greeting_image
+from ..greeting_image import generate_decoy_greeting_image, generate_greeting_image
 
 router = APIRouter()
 logger = logging.getLogger("sas.auth")
 security = HTTPBearer(auto_error=False)
+
+
+def _populate_login_challenge_gallery(
+    db: Session,
+    challenge: models.LoginChallenge,
+    user: models.User,
+    llm_backend: SemanticLlmBackend,
+) -> None:
+    """Create six gallery rows: one real security image, five decoys (random slot for the real image)."""
+    real_b = user.greeting_image_bytes
+    real_m = user.greeting_image_mime or "image/png"
+    if not real_b:
+        raise ValueError("User has no security greeting image.")
+
+    try:
+        decoy_texts = _build_decoy_image_texts(challenge.id, llm_backend)
+        decoys: list[tuple[bytes, str]] = []
+        for i, decoy_text in enumerate(decoy_texts):
+            b, m = generate_decoy_greeting_image(challenge.id, i, decoy_text)
+            decoys.append((b, m))
+    except Exception as exc:
+        logger.exception("login gallery: decoy generation failed challenge_id=%s", challenge.id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not prepare sign-in image challenge. ({exc})",
+        ) from exc
+
+    correct_slot = secrets.randbelow(6)
+    decoy_i = 0
+    for slot in range(6):
+        if slot == correct_slot:
+            b, m, is_target = real_b, real_m, True
+        else:
+            b, m = decoys[decoy_i]
+            decoy_i += 1
+            is_target = False
+        db.add(
+            models.LoginChallengeGallerySlot(
+                challenge_id=challenge.id,
+                slot=slot,
+                image_bytes=b,
+                image_mime=m,
+                is_target=is_target,
+            )
+        )
+    db.commit()
+
+
+def _text_signature(text: str) -> set[str]:
+    """Small lexical signature for diversity checks."""
+    tokens = [t for t in "".join(ch.lower() if ch.isalnum() else " " for ch in text).split() if len(t) > 2]
+    return set(tokens)
+
+
+def _is_diverse_enough(candidates: list[str]) -> bool:
+    if len(candidates) != 5:
+        return False
+    norm = []
+    for c in candidates:
+        v = (c or "").strip().lower()
+        if not v or v in norm:
+            return False
+        norm.append(v)
+    sigs = [_text_signature(c) for c in candidates]
+    # overlap ratio threshold; enforce pair-wise distinction
+    for i in range(len(sigs)):
+        for j in range(i + 1, len(sigs)):
+            a, b = sigs[i], sigs[j]
+            if not a or not b:
+                return False
+            overlap = len(a & b) / max(1, min(len(a), len(b)))
+            if overlap > 0.6:
+                return False
+    return True
+
+
+def _fallback_decoy_texts() -> list[str]:
+    return [
+        "A red lighthouse on stormy ocean cliffs at dusk",
+        "An origami crane floating over a snowy pine forest",
+        "A steampunk compass beside ancient maps and brass gears",
+        "A tropical parrot perched on bright coral reef rocks",
+        "A desert caravan crossing golden dunes under a full moon",
+    ]
+
+
+def _extract_json_array_from_text(text: str) -> list[str]:
+    """Parse JSON array even if model adds surrounding prose/markdown."""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    # direct parse
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [str(x).strip() for x in data if isinstance(x, str)]
+    except Exception:
+        pass
+    # fenced code block
+    fence = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", raw, flags=re.IGNORECASE)
+    if fence:
+        try:
+            data = json.loads(fence.group(1))
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if isinstance(x, str)]
+        except Exception:
+            pass
+    # first bracketed array
+    bracket = re.search(r"(\[[\s\S]*\])", raw)
+    if bracket:
+        try:
+            data = json.loads(bracket.group(1))
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if isinstance(x, str)]
+        except Exception:
+            pass
+    return []
+
+
+def _build_decoy_image_texts(challenge_id: int, llm_backend: SemanticLlmBackend) -> list[str]:
+    """Generate 5 diverse decoy image prompts, using selected semantic LLM or fallback."""
+    try:
+        system_seed = f"challenge-{challenge_id}-{hashlib.sha256(str(challenge_id).encode()).hexdigest()[:8]}"
+        system_prompt = (
+            "You generate decoy prompts for a security image challenge.\n"
+            "Output MUST be valid JSON only: an array of exactly 5 strings.\n"
+            "No prose, no explanation, no markdown, no keys."
+        )
+        user_prompt = (
+            "Create 5 short image descriptions for decoy images.\n"
+            "Rules:\n"
+            "- Each description must be clearly different in meaning/context.\n"
+            "- Keep each under 14 words.\n"
+            "- Do not mention security/authentication.\n"
+            "- Avoid overlap in nouns/themes.\n"
+            f"Seed hint: {system_seed}\n"
+            "Return JSON array only."
+        )
+        response = generate_text_with_prompt(
+            system_prompt,
+            user_prompt,
+            llm_backend,
+            temperature=0.7,
+            max_tokens=220,
+        ) or ""
+        prompts = _extract_json_array_from_text(response)
+        logger.info(
+            "decoy_prompt_debug: backend=%s challenge_id=%s raw_len=%s parsed_count=%s",
+            llm_backend.value,
+            challenge_id,
+            len(response),
+            len(prompts),
+        )
+        if _is_diverse_enough(prompts):
+            logger.info("decoy_prompt_debug: accepted_llm_output challenge_id=%s", challenge_id)
+            return prompts
+        logger.warning(
+            "Decoy prompt LLM output rejected; using fallback. challenge_id=%s parsed=%s raw_output=%s",
+            challenge_id,
+            prompts,
+            response,
+        )
+    except Exception as exc:
+        logger.warning("Decoy prompt LLM generation failed; using fallback. challenge_id=%s err=%s", challenge_id, exc)
+    return _fallback_decoy_texts()
 
 
 def _parse_lockout_delays() -> list[int]:
@@ -164,7 +333,11 @@ def register_account(
 
 
 @router.post("/login/init", response_model=schemas.LoginInitResponse)
-def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db)) -> schemas.LoginInitResponse:
+def login_init(
+    payload: schemas.LoginInitRequest,
+    db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
+) -> schemas.LoginInitResponse:
     """Initialize a semantic login challenge for the given identifier."""
 
     user = db.query(models.User).filter(
@@ -217,6 +390,25 @@ def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db))
     db.commit()
     db.refresh(challenge)
 
+    try:
+        _populate_login_challenge_gallery(db, challenge, user, llm_backend)
+    except HTTPException:
+        db.rollback()
+        db.query(models.LoginChallengeGallerySlot).filter(
+            models.LoginChallengeGallerySlot.challenge_id == challenge.id
+        ).delete(synchronize_session=False)
+        db.delete(challenge)
+        db.commit()
+        raise
+    except ValueError as exc:
+        db.rollback()
+        db.delete(challenge)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
     # Generate appropriate prompt based on secret type
     if secret_type == "voice":
         prompt = (
@@ -230,30 +422,129 @@ def login_init(payload: schemas.LoginInitRequest, db: Session = Depends(get_db))
             "as long as it captures the same meaning."
         )
 
+    gallery_urls = [f"/auth/login/challenge/{challenge.id}/gallery-image/{s}" for s in range(6)]
     return schemas.LoginInitResponse(
         challenge_id=challenge.id,
         prompt=prompt,
         secret_type=secret_type,
         audio_prompt_available=True,  # TTS is always available
-        greeting_image_url=f"/auth/login/challenge/{challenge.id}/greeting-image",
+        greeting_image_url=None,
+        greeting_gallery_urls=gallery_urls,
+        semantic_required=user.login_mode != models.LoginMode.IMAGE_ONLY,
     )
 
 
-@router.get("/login/challenge/{challenge_id}/greeting-image")
-def get_login_challenge_greeting_image(
+@router.get("/login/challenge/{challenge_id}/gallery-image/{slot}")
+def get_login_challenge_gallery_image(
     challenge_id: int,
+    slot: int,
     db: Session = Depends(get_db),
 ) -> Response:
-    """Serve greeting image for a valid login challenge (pre-semantic step)."""
+    """Serve one gallery tile for a valid login challenge (six-tile security image pick)."""
+    if slot < 0 or slot > 5:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slot must be 0-5.")
     challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found.")
     if challenge.expires_at <= datetime.utcnow():
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Challenge expired.")
+    row = (
+        db.query(models.LoginChallengeGallerySlot)
+        .filter(
+            models.LoginChallengeGallerySlot.challenge_id == challenge_id,
+            models.LoginChallengeGallerySlot.slot == slot,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gallery image not found.")
+    return Response(content=row.image_bytes, media_type=row.image_mime or "image/png")
+
+
+@router.post(
+    "/login/challenge/{challenge_id}/pick-greeting-image",
+    response_model=schemas.GreetingImagePickResult,
+)
+def pick_login_challenge_greeting_image(
+    challenge_id: int,
+    payload: schemas.GreetingImagePickRequest,
+    db: Session = Depends(get_db),
+) -> schemas.GreetingImagePickResult:
+    """Pick which tile is the user's security image. Three wrong picks hard-lock the account."""
+    challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found.")
+    if challenge.expires_at <= datetime.utcnow():
+        challenge.status = models.LoginChallengeStatus.EXPIRED
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Challenge expired.")
+    if challenge.status != models.LoginChallengeStatus.PENDING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This login challenge is no longer active.",
+        )
+
     user = db.query(models.User).filter(models.User.id == challenge.user_id).first()
-    if not user or not user.greeting_image_bytes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Greeting image not found.")
-    return Response(content=user.greeting_image_bytes, media_type=user.greeting_image_mime or "image/png")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User not found.")
+
+    if challenge.image_gallery_verified_at is not None:
+        return schemas.GreetingImagePickResult(
+            success=True,
+            message="Security image already confirmed for this challenge.",
+            remaining_attempts=None,
+        )
+
+    row = (
+        db.query(models.LoginChallengeGallerySlot)
+        .filter(
+            models.LoginChallengeGallerySlot.challenge_id == challenge_id,
+            models.LoginChallengeGallerySlot.slot == payload.selected_slot,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid slot.")
+
+    if row.is_target:
+        challenge.image_gallery_verified_at = datetime.utcnow()
+        if user.login_mode == models.LoginMode.IMAGE_ONLY:
+            challenge.status = models.LoginChallengeStatus.COMPLETED
+            token = create_access_token(subject=str(user.id), extra_claims={"username": user.username})
+            user.semantic_failed_attempts = 0
+            user.semantic_lock_step = 0
+            user.semantic_locked_until = None
+            user.semantic_hard_locked = False
+            db.commit()
+            return schemas.GreetingImagePickResult(
+                success=True,
+                message="Authentication successful.",
+                token=token,
+                remaining_attempts=None,
+            )
+        db.commit()
+        return schemas.GreetingImagePickResult(
+            success=True,
+            message="Correct security image. You can now complete the semantic step.",
+            remaining_attempts=None,
+        )
+
+    challenge.image_pick_failures += 1
+    remaining = max(0, 3 - challenge.image_pick_failures)
+    if challenge.image_pick_failures >= 3:
+        user.semantic_hard_locked = True
+        challenge.status = models.LoginChallengeStatus.COMPLETED
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Too many wrong security image selections. Account locked. Use recovery if you have email on file.",
+        )
+    db.commit()
+    return schemas.GreetingImagePickResult(
+        success=False,
+        message="That is not your security image. Try another tile.",
+        remaining_attempts=remaining,
+    )
 
 
 def login_complete_core(
@@ -284,7 +575,17 @@ def login_complete_core(
             detail="This login challenge has expired. Please start again.",
         )
 
+    if challenge.image_gallery_verified_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select your security greeting image before answering the semantic challenge.",
+        )
     user = db.query(models.User).filter(models.User.id == challenge.user_id).first()
+    if user and user.login_mode == models.LoginMode.IMAGE_ONLY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account is configured for image-only login. Semantic step is not required.",
+        )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -327,30 +628,52 @@ def login_complete_core(
     # - If the model scores similarity >= threshold (default 0.7), login succeeds.
     # - Fallback: if no summary (or Groq fails), we use sentence-transformers embeddings + cosine similarity.
     similarity: float = 0.0
+    used_path = "unknown"
+    llm_score_value: Optional[float] = None
+    fallback_score_value: Optional[float] = None
 
     if secret_embedding.semantic_summary_encrypted:
         semantic_summary = decrypt_text(secret_embedding.semantic_summary_encrypted)
         llm_score = score_semantic_similarity(semantic_summary, payload.response_text, llm_backend)
+        llm_score_value = llm_score
         if llm_score is not None:
             similarity = llm_score
+            used_path = "llm"
         else:
             # LLM failed, fall back to embeddings
             stored_bytes = decrypt_embedding(secret_embedding.embedding_encrypted)
             stored_vector = bytes_to_vector(stored_bytes)
             response_vector = semantic_service.embed(payload.response_text)
             similarity = semantic_service.similarity(stored_vector, response_vector)
+            fallback_score_value = similarity
+            used_path = "embedding_fallback_after_llm_none"
     else:
         # No semantic summary stored, use embeddings only
         stored_bytes = decrypt_embedding(secret_embedding.embedding_encrypted)
         stored_vector = bytes_to_vector(stored_bytes)
         response_vector = semantic_service.embed(payload.response_text)
         similarity = semantic_service.similarity(stored_vector, response_vector)
+        fallback_score_value = similarity
+        used_path = "embedding_only_no_summary"
 
     challenge.attempt_count += 1
 
     max_attempts = getattr(settings, "max_login_attempts", 3)
     success_threshold = settings.similarity_threshold
     near_threshold = max(0.0, success_threshold - 0.1)
+    logger.info(
+        "semantic_debug challenge_id=%s user_id=%s backend=%s used_path=%s llm_score=%s fallback_score=%s final_similarity=%.4f threshold=%.4f near_threshold=%.4f response_len=%s",
+        challenge.id,
+        user.id,
+        llm_backend.value,
+        used_path,
+        llm_score_value,
+        fallback_score_value,
+        similarity,
+        success_threshold,
+        near_threshold,
+        len(payload.response_text or ""),
+    )
 
     result_type = models.LoginResultType.FAILURE
     message = "We could not match your description closely enough. You can try again."
@@ -447,7 +770,23 @@ def _profile_response(user: models.User, db: Session) -> schemas.ProfileResponse
         email=user.email,
         created_at=user.created_at,
         secret_type=secret_type,
+        login_mode=user.login_mode if user.login_mode in {models.LoginMode.BOTH, models.LoginMode.IMAGE_ONLY} else models.LoginMode.BOTH,
     )
+
+
+@router.post("/register/preview-greeting-image")
+def preview_registration_greeting_image(
+    payload: schemas.RegistrationPreviewRequest,
+) -> Response:
+    """Generate a preview greeting image from image_text before final registration."""
+    try:
+        image_bytes, image_mime, _, _ = generate_greeting_image(payload.image_text)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not generate preview greeting image. ({exc})",
+        ) from exc
+    return Response(content=image_bytes, media_type=image_mime or "image/png")
 
 
 @router.get("/profile", response_model=schemas.ProfileResponse)
@@ -456,6 +795,54 @@ def get_profile(
     db: Session = Depends(get_db),
 ) -> schemas.ProfileResponse:
     """Get current user profile (username, email, secret_type)."""
+    return _profile_response(user, db)
+
+
+@router.post("/profile/greeting-image", response_model=schemas.ProfileResponse)
+def update_profile_greeting_image(
+    payload: schemas.GreetingImageUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> schemas.ProfileResponse:
+    """Regenerate security greeting image from new image text (semantic secret unchanged)."""
+    try:
+        image_bytes, image_mime, seed, prompt_hash = generate_greeting_image(payload.image_text)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not generate security greeting image. ({exc})",
+        ) from exc
+    user.greeting_image_path = None
+    user.greeting_image_bytes = image_bytes
+    user.greeting_image_mime = image_mime
+    user.greeting_seed = seed
+    user.greeting_prompt_hash = prompt_hash
+    user.greeting_model_name = settings.image_model
+    db.commit()
+    db.refresh(user)
+    return _profile_response(user, db)
+
+
+@router.get("/profile/greeting-image")
+def get_profile_greeting_image(
+    user: models.User = Depends(get_current_user),
+) -> Response:
+    """Show current security greeting image in the settings panel."""
+    if not user.greeting_image_bytes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Greeting image not found.")
+    return Response(content=user.greeting_image_bytes, media_type=user.greeting_image_mime or "image/png")
+
+
+@router.post("/profile/login-mode", response_model=schemas.ProfileResponse)
+def update_profile_login_mode(
+    payload: schemas.LoginModeUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> schemas.ProfileResponse:
+    """Set login mode (both or image_only). Applied to next login challenge immediately."""
+    user.login_mode = payload.login_mode
+    db.commit()
+    db.refresh(user)
     return _profile_response(user, db)
 
 
@@ -527,26 +914,8 @@ def _replace_secret_for_user(
         model_name=settings.embedding_model_name,
     )
     db.add(secret_embedding)
-    try:
-        image_bytes, image_mime, seed, prompt_hash = generate_greeting_image(secret_text)
-    except Exception as exc:
-        logger.error(
-            "_replace_secret_for_user: greeting image failed user_id=%s hf_resolved=%s err=%s",
-            user_id,
-            bool(resolve_hf_api_token()),
-            exc,
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not generate your security greeting image. Please try again. ({exc})",
-        )
-    user.greeting_image_path = None
-    user.greeting_image_bytes = image_bytes
-    user.greeting_image_mime = image_mime
-    user.greeting_seed = seed
-    user.greeting_prompt_hash = prompt_hash
-    user.greeting_model_name = settings.image_model
+    # Do NOT regenerate greeting image when secret phrase changes.
+    # Image is managed independently via /auth/profile/greeting-image.
 
 
 @router.post("/profile/secret", response_model=schemas.ProfileResponse)
