@@ -493,7 +493,6 @@ export function Login() {
             </button>
             <button
               type="submit"
-              disabled={loading || locked}
               disabled={loading || locked || cooldownRemaining > 0}
               aria-busy={loading}
               className="flex-1 rounded-xl bg-sky-600 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-sky-700 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:opacity-50 inline-flex items-center justify-center min-touch"
