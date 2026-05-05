@@ -49,6 +49,7 @@ export type LoginInitResponse = {
   audio_prompt_available: boolean
   greeting_image_url?: string | null
   greeting_gallery_urls?: string[]
+  semantic_required?: boolean
 }
 
 export type GreetingImagePickResult = {
