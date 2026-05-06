@@ -42,7 +42,7 @@ export function Register() {
         placement: 'center',
         title: 'Create your account',
         content:
-          'You’ll set a password and a semantic secret (text or voice). At sign-in you’ll use both: password first, then describe your secret in your own words.',
+          'You create password + semantic secret, and set greeting image text. At sign-in: password, image pick, then semantic verification.',
         disableBeacon: true,
       },
       {
@@ -57,14 +57,14 @@ export function Register() {
       },
       {
         target: '[data-tour="register-secret"]',
-        title: 'Semantic secret',
+        title: 'Secret and image text',
         content:
-          `This is the idea the system will check later—not a second password. Keep it within ${SECRET_MAX_CHARS} characters. You can paraphrase freely at login.`,
+          `Set your semantic secret and greeting image text (both max ${SECRET_MAX_CHARS} chars). The button first generates preview, then confirms registration.`,
       },
       {
         target: '[data-tour="register-submit"]',
-        title: 'Register',
-        content: 'After success, you can sign in from the login page.',
+        title: 'Preview then confirm',
+        content: 'First click generates image preview. Second click confirms registration and sends you to sign-in.',
       },
     ],
     []

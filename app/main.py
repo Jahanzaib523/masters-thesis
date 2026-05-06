@@ -162,6 +162,40 @@ def _ensure_login_challenge_gallery() -> None:
 
 _ensure_login_challenge_gallery()
 
+
+def _ensure_user_gallery_pool() -> None:
+    """Migration for user-level pre-generated gallery slots."""
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        tables = inspector.get_table_names()
+        if "user_gallery_pool_slots" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE user_gallery_pool_slots (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        slot INTEGER NOT NULL,
+                        image_bytes BLOB NOT NULL,
+                        image_mime VARCHAR(64) NOT NULL,
+                        is_target INTEGER NOT NULL DEFAULT 0,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+            )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_gallery_slot "
+                "ON user_gallery_pool_slots (user_id, slot)"
+            )
+        )
+
+
+_ensure_user_gallery_pool()
+
 log_hf_env_diagnostics()
 
 app = create_app()

@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Login / security behaviour
     max_login_attempts: int = 3
     semantic_lockout_start_after_failures: int = 3
-    semantic_lockout_delays_seconds: str = "30,300,1800"
+    semantic_lockout_delays_seconds: str = "30,60,1800,3600"
     semantic_hard_lock_after_failures: int = 8
 
     # Groq Cloud configuration (all free tier)

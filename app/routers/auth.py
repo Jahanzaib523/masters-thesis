@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta
+import concurrent.futures
 import json
 import logging
 import secrets
 import hashlib
+import time
 import re
+from threading import Thread
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -14,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..config import settings
-from ..db import get_db
+from ..db import SessionLocal, get_db
 from ..security import encrypt_embedding, decrypt_embedding, encrypt_text, decrypt_text
 from ..semantic import semantic_service, vector_to_bytes, bytes_to_vector
 from ..groq_client import synthesize_speech, transcribe_audio
@@ -22,7 +25,6 @@ from ..llm_provider import SemanticLlmBackend, get_semantic_llm_backend
 from ..semantic_llm import generate_semantic_summary, generate_text_with_prompt, score_semantic_similarity
 from ..passwords import hash_password, verify_password
 from ..tokens import create_access_token, create_signed_token, decode_access_token
-from ..config import resolve_hf_api_token
 from ..greeting_image import generate_decoy_greeting_image, generate_greeting_image
 
 router = APIRouter()
@@ -30,31 +32,73 @@ logger = logging.getLogger("sas.auth")
 security = HTTPBearer(auto_error=False)
 
 
-def _populate_login_challenge_gallery(
+def _generate_greeting_image_with_retry(image_text: str, max_attempts: int = 3) -> tuple[bytes, str, int, str]:
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return generate_greeting_image(image_text)
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= max_attempts:
+                break
+            # Short exponential backoff with jitter-ish stagger.
+            time.sleep(0.8 * attempt)
+    raise RuntimeError(f"Greeting image generation failed after {max_attempts} attempts: {last_exc}") from last_exc
+
+
+def _generate_single_decoy_with_retry(
+    user_id: int,
+    decoy_index: int,
+    decoy_text: str,
+    max_attempts: int = 3,
+) -> tuple[int, tuple[bytes, str]]:
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return decoy_index, generate_decoy_greeting_image(f"user-{user_id}", decoy_index, decoy_text)
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= max_attempts:
+                break
+            time.sleep(0.8 * attempt)
+    raise RuntimeError(
+        f"Decoy generation failed for user={user_id} decoy_index={decoy_index} after {max_attempts} attempts: {last_exc}"
+    ) from last_exc
+
+
+def _rebuild_user_gallery_pool(
     db: Session,
-    challenge: models.LoginChallenge,
     user: models.User,
     llm_backend: SemanticLlmBackend,
 ) -> None:
-    """Create six gallery rows: one real security image, five decoys (random slot for the real image)."""
+    """Build/replace user-level gallery pool: one target + five decoys."""
     real_b = user.greeting_image_bytes
     real_m = user.greeting_image_mime or "image/png"
     if not real_b:
         raise ValueError("User has no security greeting image.")
 
     try:
-        decoy_texts = _build_decoy_image_texts(challenge.id, llm_backend)
-        decoys: list[tuple[bytes, str]] = []
-        for i, decoy_text in enumerate(decoy_texts):
-            b, m = generate_decoy_greeting_image(challenge.id, i, decoy_text)
-            decoys.append((b, m))
+        decoy_texts = _build_decoy_image_texts(user.id, llm_backend)
+        if len(decoy_texts) != 5:
+            decoy_texts = _fallback_decoy_texts()
+        workers = min(5, max(2, len(decoy_texts)))
+        decoys_by_index: dict[int, tuple[bytes, str]] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(_generate_single_decoy_with_retry, user.id, i, decoy_text)
+                for i, decoy_text in enumerate(decoy_texts)
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                idx, decoy = future.result()
+                decoys_by_index[idx] = decoy
+        decoys = [decoys_by_index[i] for i in range(len(decoy_texts))]
     except Exception as exc:
-        logger.exception("login gallery: decoy generation failed challenge_id=%s", challenge.id)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not prepare sign-in image challenge. ({exc})",
-        ) from exc
+        logger.exception("user gallery pool: decoy generation failed user_id=%s", user.id)
+        raise RuntimeError(f"Could not generate gallery pool for user {user.id}. ({exc})") from exc
 
+    db.query(models.UserGalleryPoolSlot).filter(
+        models.UserGalleryPoolSlot.user_id == user.id
+    ).delete(synchronize_session=False)
     correct_slot = secrets.randbelow(6)
     decoy_i = 0
     for slot in range(6):
@@ -65,8 +109,8 @@ def _populate_login_challenge_gallery(
             decoy_i += 1
             is_target = False
         db.add(
-            models.LoginChallengeGallerySlot(
-                challenge_id=challenge.id,
+            models.UserGalleryPoolSlot(
+                user_id=user.id,
                 slot=slot,
                 image_bytes=b,
                 image_mime=m,
@@ -74,6 +118,91 @@ def _populate_login_challenge_gallery(
             )
         )
     db.commit()
+
+
+def _get_user_gallery_pool(
+    db: Session,
+    user_id: int,
+) -> list[models.UserGalleryPoolSlot]:
+    return (
+        db.query(models.UserGalleryPoolSlot)
+        .filter(models.UserGalleryPoolSlot.user_id == user_id)
+        .order_by(models.UserGalleryPoolSlot.slot.asc())
+        .all()
+    )
+
+
+def _populate_login_challenge_gallery_from_pool(
+    db: Session,
+    challenge: models.LoginChallenge,
+    pool_rows: list[models.UserGalleryPoolSlot],
+) -> None:
+    if len(pool_rows) != 6:
+        raise ValueError("Security gallery is unavailable for this account.")
+    for row in pool_rows:
+        db.add(
+            models.LoginChallengeGallerySlot(
+                challenge_id=challenge.id,
+                slot=row.slot,
+                image_bytes=row.image_bytes,
+                image_mime=row.image_mime,
+                is_target=row.is_target,
+            )
+        )
+    db.commit()
+
+
+def _refresh_user_gallery_pool_async(user_id: int, llm_backend: SemanticLlmBackend) -> None:
+    """Rebuild gallery pool in a background thread after successful login."""
+    def _job() -> None:
+        db = SessionLocal()
+        try:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if not user:
+                return
+            _rebuild_user_gallery_pool(db, user, llm_backend)
+            logger.info("user gallery pool refreshed user_id=%s", user_id)
+        except Exception:
+            logger.exception("user gallery pool refresh failed user_id=%s", user_id)
+        finally:
+            db.close()
+
+    Thread(target=_job, daemon=True).start()
+
+
+def _generate_user_security_image_async(
+    user_id: int,
+    image_text: str,
+    llm_backend: SemanticLlmBackend,
+) -> None:
+    """Generate user's security image + pool in background (non-blocking for API caller)."""
+    image_text = (image_text or "").strip()
+    if not image_text:
+        return
+
+    def _job() -> None:
+        db = SessionLocal()
+        try:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if not user:
+                return
+            image_bytes, image_mime, seed, prompt_hash = _generate_greeting_image_with_retry(image_text)
+            user.greeting_image_path = None
+            user.greeting_image_bytes = image_bytes
+            user.greeting_image_mime = image_mime
+            user.greeting_seed = seed
+            user.greeting_prompt_hash = prompt_hash
+            user.greeting_model_name = settings.image_model
+            db.commit()
+            db.refresh(user)
+            _rebuild_user_gallery_pool(db, user, llm_backend)
+            logger.info("user security image generated user_id=%s", user_id)
+        except Exception:
+            logger.exception("user security image generation failed user_id=%s", user_id)
+        finally:
+            db.close()
+
+    Thread(target=_job, daemon=True).start()
 
 
 def _text_signature(text: str) -> set[str]:
@@ -208,11 +337,36 @@ def _parse_lockout_delays() -> list[int]:
                 delays.append(value)
         except ValueError:
             continue
-    return delays or [30, 300, 1800]
+    return delays or [30, 60, 1800, 3600]
 
 
 def _is_temporarily_locked(user: models.User) -> bool:
     return bool(user.semantic_locked_until and user.semantic_locked_until > datetime.utcnow())
+
+
+def _apply_progressive_user_lockout(user: models.User) -> tuple[Optional[int], bool]:
+    """Increment shared failure counter and apply progressive lockout policy.
+
+    Returns:
+    - retry_after_seconds (temporary lockout duration) or None
+    - hard_locked (True when account enters hard lock)
+    """
+    user.semantic_failed_attempts += 1
+    lock_window_size = max(1, int(settings.semantic_lockout_start_after_failures or 3))
+    lockout_delays = _parse_lockout_delays()
+
+    if user.semantic_failed_attempts % lock_window_size != 0:
+        return None, False
+
+    if user.semantic_lock_step < len(lockout_delays):
+        retry_after_seconds = lockout_delays[user.semantic_lock_step]
+        user.semantic_lock_step += 1
+        user.semantic_locked_until = datetime.utcnow() + timedelta(seconds=retry_after_seconds)
+        return retry_after_seconds, False
+
+    user.semantic_hard_locked = True
+    user.semantic_locked_until = None
+    return None, True
 
 
 def get_current_user(
@@ -294,29 +448,9 @@ def register_user_core(
         model_name=settings.embedding_model_name,
     )
     db.add(secret_embedding)
-    try:
-        image_bytes, image_mime, seed, prompt_hash = generate_greeting_image(payload.image_text)
-    except Exception as exc:
-        db.rollback()
-        logger.error(
-            "register_user_core: greeting image failed user_id=%s hf_resolved=%s err=%s",
-            getattr(user, "id", None),
-            bool(resolve_hf_api_token()),
-            exc,
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not generate your security greeting image. Please try again. ({exc})",
-        )
-    user.greeting_image_path = None
-    user.greeting_image_bytes = image_bytes
-    user.greeting_image_mime = image_mime
-    user.greeting_seed = seed
-    user.greeting_prompt_hash = prompt_hash
-    user.greeting_model_name = settings.image_model
     db.commit()
     db.refresh(user)
+    _generate_user_security_image_async(user.id, payload.image_text, llm_backend)
 
     return user
 
@@ -364,15 +498,6 @@ def login_init(
             status_code=status.HTTP_423_LOCKED,
             detail="Account locked due to repeated semantic failures. Recovery via email is required.",
         )
-    # Fresh login session after cooldown: reset semantic retry window.
-    # This prevents a previous timed lockout cycle from counting as the next hard-lock cycle
-    # when user restarts from username/password step.
-    if user.semantic_locked_until and user.semantic_locked_until <= datetime.utcnow():
-        user.semantic_failed_attempts = 0
-        user.semantic_lock_step = 0
-        user.semantic_locked_until = None
-        db.commit()
-        db.refresh(user)
     if _is_temporarily_locked(user):
         remaining = int((user.semantic_locked_until - datetime.utcnow()).total_seconds())
         raise HTTPException(
@@ -382,7 +507,10 @@ def login_init(
     if not user.greeting_image_bytes:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Security greeting image is missing for this account. Please reset your secret in Profile.",
+            detail=(
+                "Your security greeting image is still being prepared. "
+                "Please wait a bit and try sign-in again."
+            ),
         )
 
     # Get the user's secret type
@@ -400,7 +528,16 @@ def login_init(
     db.refresh(challenge)
 
     try:
-        _populate_login_challenge_gallery(db, challenge, user, llm_backend)
+        pool_rows = _get_user_gallery_pool(db, user.id)
+        if len(pool_rows) != 6 or sum(1 for r in pool_rows if r.is_target) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Your security image challenge is still being prepared. "
+                    "Please wait a bit and try sign-in again."
+                ),
+            )
+        _populate_login_challenge_gallery_from_pool(db, challenge, pool_rows)
     except HTTPException:
         db.rollback()
         db.query(models.LoginChallengeGallerySlot).filter(
@@ -409,7 +546,7 @@ def login_init(
         db.delete(challenge)
         db.commit()
         raise
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         db.rollback()
         db.delete(challenge)
         db.commit()
@@ -496,6 +633,19 @@ def pick_login_challenge_greeting_image(
     user = db.query(models.User).filter(models.User.id == challenge.user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User not found.")
+    if user.semantic_hard_locked:
+        challenge.status = models.LoginChallengeStatus.COMPLETED
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account locked due to repeated failures. Recovery via email is required.",
+        )
+    if _is_temporarily_locked(user):
+        remaining = int((user.semantic_locked_until - datetime.utcnow()).total_seconds())
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Too many recent failures. Try again in {max(1, remaining)} seconds.",
+        )
 
     if challenge.image_gallery_verified_at is not None:
         return schemas.GreetingImagePickResult(
@@ -525,6 +675,7 @@ def pick_login_challenge_greeting_image(
             user.semantic_locked_until = None
             user.semantic_hard_locked = False
             db.commit()
+            _refresh_user_gallery_pool_async(user.id, SemanticLlmBackend.groq)
             return schemas.GreetingImagePickResult(
                 success=True,
                 message="Authentication successful.",
@@ -539,15 +690,22 @@ def pick_login_challenge_greeting_image(
         )
 
     challenge.image_pick_failures += 1
-    remaining = max(0, 3 - challenge.image_pick_failures)
-    if challenge.image_pick_failures >= 3:
-        user.semantic_hard_locked = True
+    retry_after_seconds, hard_locked = _apply_progressive_user_lockout(user)
+    if hard_locked:
         challenge.status = models.LoginChallengeStatus.COMPLETED
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
-            detail="Too many wrong security image selections. Account locked. Use recovery if you have email on file.",
+            detail="Account locked due to repeated failures. Recovery via email is required.",
         )
+    if retry_after_seconds:
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Too many failed attempts. Try again in {retry_after_seconds} seconds.",
+        )
+    lock_window_size = max(1, int(settings.semantic_lockout_start_after_failures or 3))
+    remaining = lock_window_size - (user.semantic_failed_attempts % lock_window_size)
     db.commit()
     return schemas.GreetingImagePickResult(
         success=False,
@@ -706,26 +864,19 @@ def login_complete_core(
         message = "We could not match your description closely enough. You can try again."
 
     if result_type != models.LoginResultType.SUCCESS:
-        # Policy:
-        # - First 3 semantic failures => temporary 30s cooldown
-        # - Next 3 semantic failures (total 6) => hard lock
-        # Counters are reset on successful login.
-        user.semantic_failed_attempts += 1
-        first_window_failures = 3
-        second_window_total_failures = 6
-        cooldown_seconds = 5
-
-        if user.semantic_failed_attempts >= second_window_total_failures:
-            user.semantic_hard_locked = True
-            user.semantic_locked_until = None
+        # Progressive policy:
+        # - Every 3 consecutive semantic failures triggers a lockout window.
+        # - Lockout windows are configured by SEMANTIC_LOCKOUT_DELAYS_SECONDS.
+        # - After the configured windows are exhausted, the next 3-failure boundary hard-locks.
+        # - Starting a fresh login challenge does NOT reset these user-level counters.
+        retry_after_seconds, hard_locked = _apply_progressive_user_lockout(user)
+        if retry_after_seconds:
+            result_type = models.LoginResultType.LOCKED
+            message = f"Too many failed semantic attempts. Try again in {retry_after_seconds} seconds."
+        elif hard_locked:
             result_type = models.LoginResultType.LOCKED
             message = "Account locked due to repeated semantic failures. Recovery via email is required."
             challenge.status = models.LoginChallengeStatus.COMPLETED
-        elif user.semantic_failed_attempts == first_window_failures:
-            retry_after_seconds = cooldown_seconds
-            user.semantic_locked_until = datetime.utcnow() + timedelta(seconds=retry_after_seconds)
-            result_type = models.LoginResultType.LOCKED
-            message = f"Too many failed semantic attempts. Try again in {retry_after_seconds} seconds."
 
     # Record login event with anonymized similarity bucket
     similarity_bucket = _bucket_similarity(similarity)
@@ -736,6 +887,9 @@ def login_complete_core(
     )
     db.add(event)
     db.commit()
+
+    if result_type == models.LoginResultType.SUCCESS:
+        _refresh_user_gallery_pool_async(user.id, llm_backend)
 
     return schemas.LoginResult(
         success=result_type == models.LoginResultType.SUCCESS,
@@ -809,23 +963,10 @@ def update_profile_greeting_image(
     payload: schemas.GreetingImageUpdate,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.ProfileResponse:
     """Regenerate security greeting image from new image text (semantic secret unchanged)."""
-    try:
-        image_bytes, image_mime, seed, prompt_hash = generate_greeting_image(payload.image_text)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not generate security greeting image. ({exc})",
-        ) from exc
-    user.greeting_image_path = None
-    user.greeting_image_bytes = image_bytes
-    user.greeting_image_mime = image_mime
-    user.greeting_seed = seed
-    user.greeting_prompt_hash = prompt_hash
-    user.greeting_model_name = settings.image_model
-    db.commit()
-    db.refresh(user)
+    _generate_user_security_image_async(user.id, payload.image_text, llm_backend)
     return _profile_response(user, db)
 
 

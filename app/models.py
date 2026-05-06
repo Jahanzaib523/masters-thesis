@@ -42,6 +42,9 @@ class User(Base):
     login_challenges: Mapped[list["LoginChallenge"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    gallery_pool_slots: Mapped[list["UserGalleryPoolSlot"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     login_events: Mapped[list["LoginEvent"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -126,6 +129,26 @@ class LoginChallengeGallerySlot(Base):
     is_target: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     challenge: Mapped["LoginChallenge"] = relationship(back_populates="gallery_slots")
+
+
+class UserGalleryPoolSlot(Base):
+    """Pre-generated gallery set for a user: one target + five decoys."""
+
+    __tablename__ = "user_gallery_pool_slots"
+    __table_args__ = (UniqueConstraint("user_id", "slot", name="uq_user_gallery_slot"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    slot: Mapped[int] = mapped_column(Integer, nullable=False)  # 0..5
+    image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    image_mime: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_target: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="gallery_pool_slots")
 
 
 class LoginResultType:

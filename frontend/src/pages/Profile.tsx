@@ -260,9 +260,9 @@ export function Profile() {
         disableBeacon: true,
       },
       {
-        target: '[data-tour="profile-header"]',
-        title: 'Header',
-        content: 'Your profile title. Use Sign out in the top navigation to end this device’s session.',
+        target: '[data-tour="profile-account"]',
+        title: 'Start here',
+        content: 'Use Sign out in the top navigation to end this device session at any time.',
       },
       {
         target: '[data-tour="profile-account"]',
@@ -274,6 +274,18 @@ export function Profile() {
         title: 'Semantic secret',
         content:
           'Change your sign-in phrase here (text or voice). Replacing it overwrites the old one—you’ll use the new phrase next time you sign in.',
+      },
+      {
+        target: '[data-tour="profile-login-mode"]',
+        title: 'Login mode',
+        content:
+          'Choose whether users must do both image + semantic steps, or image-only login after selecting the correct image.',
+      },
+      {
+        target: '[data-tour="profile-greeting-image"]',
+        title: 'Security greeting image',
+        content:
+          'Update the image text here. Generation runs in background and is used in the six-image challenge at next sign-in.',
       },
     ],
     []
@@ -299,9 +311,6 @@ export function Profile() {
   return (
     <div className="space-y-8">
       <PageTour storageKey={TOUR_STORAGE.profile} steps={profileSteps} />
-      <div data-tour="profile-header">
-        <h1 className="text-2xl font-semibold text-slate-800">Profile</h1>
-      </div>
 
       {error && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-100" role="alert">
@@ -481,7 +490,7 @@ export function Profile() {
         {secretSuccess && <p className="mt-3 text-sm text-green-600" role="status">Secret updated.</p>}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-tour="profile-login-mode">
         <h2 className="text-lg font-semibold text-slate-800">Login mode</h2>
         <p className="mt-1 text-sm text-slate-500">Choose whether login requires both image + semantic step, or image-only.</p>
         <div className="mt-3 flex gap-2 rounded-xl bg-slate-100 p-1.5">
@@ -504,7 +513,7 @@ export function Profile() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-tour="profile-greeting-image">
         <h2 className="text-lg font-semibold text-slate-800">Security greeting image</h2>
         <p className="mt-1 text-sm text-slate-500">
           The image you recognize at sign-in (six-tile pick). Updating only changes this image—your semantic secret phrase stays the same until you change it above.

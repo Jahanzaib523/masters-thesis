@@ -106,9 +106,9 @@ export function userFriendlyMessage(message: string, _context?: 'auth' | 'profil
     return "We don't have an account with that username or email. Check the spelling or register first."
   if (m.includes('invalid or expired token') || m.includes('not authenticated'))
     return "Your session has expired. Please sign in again."
-  if (m.includes('too many'))
-    return "Too many wrong answers. Use \"Start over\" below and try again with your username."
   if (m.includes('try again in') || m.includes('please wait'))
+    return 'Too many attempts. Please wait for the cooldown period and try again.'
+  if (m.includes('too many'))
     return 'Too many attempts. Please wait for the cooldown period and try again.'
   if (m.includes('account locked') || m.includes('recovery via email'))
     return 'This account is locked for security. Use account recovery via your email.'

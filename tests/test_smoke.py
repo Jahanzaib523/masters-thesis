@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 
 
@@ -51,11 +52,20 @@ def test_health_and_text_auth_flow():
     user_id = r.json()["id"]
     assert user_id
 
-    # Login init
-    r = client.post(
-        "/auth/login/init",
-        json={"identifier": username, "password": "Password123!"},
-    )
+    # Login init (image/gallery prep is async now; poll briefly until ready)
+    r = None
+    for _ in range(30):
+        r = client.post(
+            "/auth/login/init",
+            json={"identifier": username, "password": "Password123!"},
+        )
+        if r.status_code == 200:
+            break
+        if r.status_code == 503 and "still being prepared" in r.text.lower():
+            time.sleep(1)
+            continue
+        break
+    assert r is not None
     assert r.status_code == 200, r.text
     init_data = r.json()
     challenge_id = init_data["challenge_id"]
@@ -112,10 +122,19 @@ def test_health_and_text_auth_flow():
     finally:
         sess.close()
 
-    r = client.post(
-        "/auth/login/init",
-        json={"identifier": username, "password": "Password123!"},
-    )
+    r = None
+    for _ in range(30):
+        r = client.post(
+            "/auth/login/init",
+            json={"identifier": username, "password": "Password123!"},
+        )
+        if r.status_code == 200:
+            break
+        if r.status_code == 503 and "still being prepared" in r.text.lower():
+            time.sleep(1)
+            continue
+        break
+    assert r is not None
     assert r.status_code == 200, r.text
     init_data = r.json()
     assert init_data.get("semantic_required") is False

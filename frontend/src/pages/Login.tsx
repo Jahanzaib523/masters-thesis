@@ -38,6 +38,9 @@ export function Login() {
   const recordedBlob = useRef<Blob | null>(null)
 
   const registered = (location.state as { registered?: boolean })?.registered
+  const showCredentialHint =
+    Boolean(error) &&
+    !/too many|try again in|please wait|locked|retry in/i.test(error ?? '')
 
   const loginCredentialSteps = useMemo<Step[]>(
     () => [
@@ -46,7 +49,7 @@ export function Login() {
         placement: 'center',
         title: 'Welcome',
         content:
-          'Semantic sign-in uses your password, then you pick your security image from six tiles, then you describe your secret in your own words.',
+          'Sign-in is always three steps: password first, then pick your security image, then semantic verification.',
         disableBeacon: true,
       },
       {
@@ -57,7 +60,7 @@ export function Login() {
       {
         target: '[data-tour="login-heading-block"]',
         title: 'Sign in',
-        content: 'Use the same username or email you registered with, and your account password.',
+        content: 'This is now the main entry page. Use the register link at the bottom if you do not have an account.',
       },
       {
         target: '[data-tour="login-identifier"]',
@@ -72,7 +75,7 @@ export function Login() {
       {
         target: '[data-tour="login-continue"]',
         title: 'Continue',
-        content: 'When your credentials are correct, you’ll pick your security image, then describe or speak your secret.',
+        content: 'After credentials pass, you move to image-pick step. If lockout is active, you will see remaining time here.',
       },
     ],
     []
@@ -92,7 +95,7 @@ export function Login() {
         target: '[data-tour="login-verify-intro"]',
         title: 'Your secret check',
         content:
-          'The heading and text remind you what to do. Express the same idea you used when you registered—paraphrases and descriptions are OK.',
+          'Express the same idea you used when registering. Exact wording is not required; meaning match is what matters.',
       },
       {
         target: '[data-tour="login-response-tabs"]',
@@ -109,6 +112,30 @@ export function Login() {
         target: '[data-tour="login-verify-actions"]',
         title: 'Back or finish',
         content: 'Go back to change credentials, or submit to complete sign-in.',
+      },
+    ],
+    []
+  )
+  const loginGallerySteps = useMemo<Step[]>(
+    () => [
+      {
+        target: 'body',
+        placement: 'center',
+        title: 'Pick your image',
+        content:
+          'This is step 2. Select the security image you recognize from registration. Three wrong picks lock the account.',
+        disableBeacon: true,
+      },
+      {
+        target: '[data-tour="login-gallery-grid"]',
+        title: 'Six-image challenge',
+        content:
+          'One tile is your image and five are decoys. Choose carefully; remaining attempts are shown after a wrong pick.',
+      },
+      {
+        target: '[data-tour="login-gallery-actions"]',
+        title: 'Navigation',
+        content: 'Use Back to return to credentials, or pick a tile to continue to semantic verification.',
       },
     ],
     []
@@ -179,7 +206,18 @@ export function Login() {
       setResponseType((res.secret_type as ResponseType) === 'voice' ? 'voice' : 'text')
       setStep('gallery')
     } catch (err) {
-      setError(userFriendlyMessage(err instanceof Error ? err.message : 'Could not start sign-in', 'auth'))
+      const rawMessage = err instanceof Error ? err.message : 'Could not start sign-in'
+      if (err instanceof ApiError && err.status === 423) {
+        const match = rawMessage.match(/(\d+)\s*seconds?/i)
+        const seconds = match ? Number.parseInt(match[1], 10) : NaN
+        if (Number.isFinite(seconds) && seconds > 0) {
+          setError(`Too many attempts. Your lockout will be dismissed in ${seconds}s.`)
+        } else {
+          setError('Too many attempts. Your lockout is still active. Please wait and try again.')
+        }
+      } else {
+        setError(userFriendlyMessage(rawMessage, 'auth'))
+      }
     } finally {
       setLoading(false)
     }
@@ -283,6 +321,8 @@ export function Login() {
 
   if (step === 'gallery' && challengeId != null) {
     return (
+      <>
+      <PageTour storageKey={TOUR_STORAGE.loginGallery} steps={loginGallerySteps} />
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg transition-shadow hover:shadow-xl sm:p-8">
         <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
           <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700">Step 2 of 3</span>
@@ -319,7 +359,7 @@ export function Login() {
             </button>
           </div>
         )}
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3" data-tour="login-gallery-grid">
           {greetingGalleryUrls.map((url, slot) => (
             <button
               key={slot}
@@ -331,13 +371,13 @@ export function Login() {
               <img
                 src={url}
                 alt={`Security image option ${slot + 1}`}
-                className="mx-auto h-28 w-full max-w-[140px] rounded-md object-cover"
+                className="h-32 w-full rounded-md object-cover sm:h-40"
               />
-              <span className="mt-1 block text-center text-xs text-slate-500">Option {slot + 1}</span>
+              <span className="mt-2 block text-center text-sm text-slate-600">Option {slot + 1}</span>
             </button>
           ))}
         </div>
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex gap-3" data-tour="login-gallery-actions">
           <button
             type="button"
             onClick={() => {
@@ -356,6 +396,7 @@ export function Login() {
           No account? <Link to="/register" className="font-medium text-sky-600 hover:text-sky-700 hover:underline">Register</Link>
         </p>
       </div>
+      </>
     )
   }
 
@@ -394,12 +435,12 @@ export function Login() {
               role="tab"
               aria-selected={responseType === opt.value}
               onClick={() => handleResponseTypeChange(opt.value)}
-              className={`flex-1 rounded-lg py-3 px-4 text-sm font-medium transition-all duration-200 ${
+              className={`flex-1 rounded-lg py-3 px-4 text-sm font-medium transition-all duration-200 min-touch ${
                 responseType === opt.value ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
               }`}
             >
               <span className="block text-lg sm:inline sm:text-base sm:mr-1">{opt.icon}</span>
-              <span className="hidden sm:inline">{opt.label}</span>
+              <span className="inline">{opt.label}</span>
             </button>
           ))}
         </div>
@@ -528,7 +569,9 @@ export function Login() {
       {error && (
         <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-100" role="alert">
           <p>{error}</p>
-          <p className="mt-1 text-red-600/90">Check your username, email, and password, or register first.</p>
+          {showCredentialHint && (
+            <p className="mt-1 text-red-600/90">Check your username, email, and password, or register first.</p>
+          )}
         </div>
       )}
 
