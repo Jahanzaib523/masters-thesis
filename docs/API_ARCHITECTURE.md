@@ -1,4 +1,4 @@
-# API architecture — Semantic Authentication System (SAS)
+# API architecture: Semantic Authentication System (SAS)
 
 The public HTTP API is grouped under **`/auth`** for registration, login, profile, recovery, and speech artefacts, with **`/health`** for readiness. A separate **HTML** surface may exist under **`/web`** for form-based experiments; the primary product flow is the JSON API consumed by the single-page application.
 
