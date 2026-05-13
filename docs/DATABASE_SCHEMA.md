@@ -1,4 +1,4 @@
-# Persistence schema — Semantic Authentication System (SAS)
+# Persistence schema: Semantic Authentication System (SAS)
 
 The SAS persistence model stores accounts, encrypted semantic artefacts, per-login challenges with six binary image slots, a per-user pre-generated gallery pool, and anonymised login outcomes. The diagram below is the **conceptual schema** implemented in the application layer.
 
