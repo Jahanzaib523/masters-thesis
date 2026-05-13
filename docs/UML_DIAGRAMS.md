@@ -1,4 +1,4 @@
-# UML views — Semantic Authentication System (SAS)
+# UML views Semantic Authentication System (SAS)
 
 Figures in this document are **Mermaid** diagrams embedded in Markdown.
 
@@ -104,7 +104,7 @@ classDiagram
 
 ---
 
-## 3. Sequence — Sign-in (both factors: password → image → semantic)
+## 3. Sequence: Sign-in (both factors: password → image → semantic)
 
 ```mermaid
 sequenceDiagram
@@ -139,7 +139,7 @@ sequenceDiagram
 
 ---
 
-## 4. Sequence — Registration with text secret (conceptual)
+## 4. Sequence: Registration with text secret (conceptual)
 
 ```mermaid
 sequenceDiagram
