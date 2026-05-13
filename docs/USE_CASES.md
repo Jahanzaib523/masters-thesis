@@ -1,4 +1,4 @@
-# Use cases — Semantic Authentication System (SAS)
+# Use cases: Semantic Authentication System (SAS)
 
 **Primary actor:** End user  
 **Secondary actors:** SAS application, external AI services (**Groq** for default LLM / speech / TTS; **OpenAI** as an optional alternative for semantic operations when enabled), **Hugging Face** (image generation and hub access), **administrator** (lockout recovery operations)
