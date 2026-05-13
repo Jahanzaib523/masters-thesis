@@ -1,4 +1,4 @@
-# User stories — Semantic Authentication System (SAS)
+# User stories: Semantic Authentication System (SAS)
 
 SAS supports **password + semantic secret + visual greeting challenge**, with **text and voice** paths and **inclusive** access (e.g. spoken prompts). Stories below describe value from the **end user’s** perspective.
 
