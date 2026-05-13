@@ -1,4 +1,4 @@
-# Semantic Authentication System — documentation
+# Semantic Authentication System documentation
 
 This folder contains the **product and system specification** for SAS: user stories, use cases, UML views, software architecture, persistence schema, and API structure.
 
