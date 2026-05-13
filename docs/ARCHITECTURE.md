@@ -1,4 +1,4 @@
-# Software architecture — Semantic Authentication System (SAS)
+# Software architecture: Semantic Authentication System (SAS)
 
 SAS is a **web-centric** semantic authentication prototype: a browser client talks to a **Python** service that combines **classical credentials**, **meaning-based verification**, and a **visual recognition** step. **Groq** is the default provider for conversational LLM tasks, speech-to-text, text-to-speech, and related semantic scoring; **OpenAI** can serve the same semantic summarisation and similarity role when selected and configured. **Hugging Face** backs image generation and model hub access; **sentence-transformers** runs locally for dense embeddings and as a **fallback** when the primary semantic score is unavailable.
 
