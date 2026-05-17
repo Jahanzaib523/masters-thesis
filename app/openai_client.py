@@ -1,4 +1,4 @@
-"""OpenAI client for semantic checks and summaries."""
+"""OpenAI client for semantic checks and summaries.
 
 Uses the same prompts as Groq. Configure model via OPENAI_MODEL (default: gpt-4o-mini).
 See: https://platform.openai.com/docs/api-reference/chat/create
