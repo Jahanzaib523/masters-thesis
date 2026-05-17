@@ -8,10 +8,7 @@ logger = logging.getLogger("sas.config")
 
 
 class Settings(BaseSettings):
-    """Application configuration settings.
-
-    Values can be overridden via environment variables or a `.env` file.
-    """
+    """App settings."""
 
     model_config = SettingsConfigDict(
         env_file=("app/.env", ".env"),
@@ -77,7 +74,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _normalize_hf_tokens(self):
-        """Allow either HF_API_TOKEN or HF_TOKEN from environment."""
+        """Standardize HF token names to allow either HF_API_TOKEN or HF_TOKEN."""
         if self.hf_api_token is not None:
             self.hf_api_token = self.hf_api_token.strip() or None
         if self.hf_token is not None:
@@ -88,10 +85,7 @@ class Settings(BaseSettings):
 
 
 def resolve_hf_api_token() -> str | None:
-    """Return HF token from loaded settings, then from process environment.
-
-    Use this for Hugging Face API calls so `HF_API_TOKEN=""` in `.env` cannot hide a real OS token.
-    """
+    """Grab the HF token from settings, or fall back to the environment variables."""
     import os
 
     s = get_settings()
@@ -112,7 +106,7 @@ def resolve_hf_api_token() -> str | None:
 
 
 def log_hf_env_diagnostics() -> None:
-    """Log where HF tokens appear (never log secret values)."""
+    """Log where we found the HF tokens (without leaking the actual secrets)."""
     import os
 
     keys = ("HF_API_TOKEN", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
@@ -147,7 +141,7 @@ def log_hf_env_diagnostics() -> None:
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return cached application settings."""
+    """Grab the cached app settings."""
 
     return Settings()
 

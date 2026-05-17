@@ -40,25 +40,25 @@ def decrypt_bytes(ciphertext: bytes) -> bytes:
 
 
 def encrypt_embedding(raw: bytes) -> bytes:
-    """Encrypt embedding bytes for storage."""
+    """Encrypt raw embedding bytes before we hit the database."""
 
     return encrypt_bytes(raw)
 
 
 def decrypt_embedding(ciphertext: bytes) -> bytes:
-    """Decrypt embedding bytes from storage."""
+    """Decrypt embedding bytes pulled from the database."""
 
     return decrypt_bytes(ciphertext)
 
 
 def encrypt_text(plain_text: str) -> bytes:
-    """Encrypt arbitrary text for storage."""
+    """Encrypt a string before saving it."""
 
     return encrypt_bytes(plain_text.encode("utf-8"))
 
 
 def decrypt_text(ciphertext: bytes) -> str:
-    """Decrypt arbitrary text from storage."""
+    """Decrypt a string pulled from the database."""
 
     return decrypt_bytes(ciphertext).decode("utf-8")
 

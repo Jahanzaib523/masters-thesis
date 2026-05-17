@@ -259,7 +259,7 @@ export function Login() {
         return
       }
 
-      // Keep the user on this step and show the error inline instead of bumping them back to the start
+      // Continuous feedback: show error on this step, do not go back to start
       const lowered = result.message.toLowerCase()
       const isLocked = lowered.includes('too many') || lowered.includes('locked') || lowered.includes('wait')
       const waitSuffix = result.retry_after_seconds ? ` (${result.retry_after_seconds}s)` : ''

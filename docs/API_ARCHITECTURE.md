@@ -58,7 +58,17 @@ stateDiagram-v2
 
 ---
 
-## 4. Endpoint catalogue
+## 4. Image Generation Pipeline
+
+We use a **hybrid generation** pipeline for security images during onboarding and profile updates to keep the app feeling fast:
+
+1. **Explicit Preview**: Users can preview their image (`/auth/register/preview-greeting-image`) before saving it, so we don't spam the database with discarded prompts.
+2. **Synchronous Target Generation**: When saving, we generate the main image right away so the UI updates instantly without a page refresh.
+3. **Asynchronous Decoy Generation**: We spin up the 5 decoy images in a background thread so we don't block the user from moving on.
+
+---
+
+## 5. Endpoint catalogue
 
 | Method | Path | Authentication |
 |--------|------|------------------|
@@ -88,7 +98,7 @@ stateDiagram-v2
 
 ---
 
-## 5. Outbound service dependencies
+## 6. Outbound service dependencies
 
 ```mermaid
 flowchart LR

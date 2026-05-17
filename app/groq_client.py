@@ -40,10 +40,7 @@ def get_groq_client() -> Groq:
 
 
 def score_semantic_similarity(secret_text: str, attempt_text: str) -> Optional[float]:
-    """Use a Groq LLM to score semantic similarity between two texts.
-
-    Returns a float in [0, 1] or None if scoring fails.
-    """
+    """Use Groq to rate how similar two concepts are."""
 
     try:
         client = get_groq_client()
@@ -76,11 +73,7 @@ def score_semantic_similarity(secret_text: str, attempt_text: str) -> Optional[f
 
 
 def generate_semantic_summary(text: str) -> Optional[str]:
-    """Use LLM to generate a semantic summary/concept of the secret.
-
-    This summary is stored instead of raw text for security.
-    It must capture the CORE idea so that paraphrases at login still match.
-    """
+    """Use Groq to summarize the secret text."""
 
     try:
         client = get_groq_client()
@@ -111,7 +104,7 @@ def generate_text_with_prompt(
     temperature: float = 0.0,
     max_tokens: int = 300,
 ) -> Optional[str]:
-    """Generic Groq chat helper for specialized tasks (e.g. JSON decoy prompt generation)."""
+    """Generic helper to ping Groq for things like generating decoy prompts."""
     try:
         client = get_groq_client()
     except RuntimeError as exc:
@@ -140,10 +133,7 @@ def generate_text_with_prompt(
 
 
 def transcribe_audio(filename: str, audio_bytes: bytes, language: str | None = None) -> Optional[str]:
-    """Transcribe audio bytes to text using Groq Whisper STT.
-
-    Returns transcribed text or None if transcription fails.
-    """
+    """Use Groq Whisper to turn audio into text."""
 
     try:
         client = get_groq_client()
@@ -171,10 +161,7 @@ def transcribe_audio(filename: str, audio_bytes: bytes, language: str | None = N
 
 
 def synthesize_speech(text: str) -> Optional[bytes]:
-    """Convert text to speech using Groq Orpheus TTS.
-
-    Returns audio bytes (WAV format) or None if synthesis fails.
-    """
+    """Use Groq Orpheus to turn text into speech."""
 
     try:
         client = get_groq_client()

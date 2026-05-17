@@ -1,6 +1,6 @@
-# Persistence schema: Semantic Authentication System (SAS)
+# Database Schema
 
-The SAS persistence model stores accounts, encrypted semantic artefacts, per-login challenges with six binary image slots, a per-user pre-generated gallery pool, and anonymised login outcomes. The diagram below is the **conceptual schema** implemented in the application layer.
+Here's the data model we use to store accounts, encrypted semantic data, login challenges (with their 6 image tiles), pre-generated galleries, and login event logs. The diagram below shows the core structure.
 
 ## Entity–relationship model
 
@@ -84,9 +84,9 @@ erDiagram
 
 ## Integrity rules
 
-- Each **username** is unique; **email**, when present, is unique.
-- Gallery tiles are uniquely keyed by **(challenge_id, slot)** and **(user_id, slot)** for challenge and pool tables respectively.
+- **usernames** are always unique. If an **email** is provided, it must also be unique.
+- Image tiles have unique combinations of **(challenge_id, slot)** or **(user_id, slot)** so we don't accidentally double-book a slot.
 
 ## Schema evolution
 
-The shipped application may add columns or tables on startup when older files are opened, so that existing study databases gain new fields without a separate migration tool. The diagram represents the **intended** relational shape after a successful run.
+We handle migrations automatically on startup. If you spin up an older database, the app just adds whatever new columns it needs behind the scenes so you don't have to worry about running separate migration scripts. The diagram above shows the final expected structure.

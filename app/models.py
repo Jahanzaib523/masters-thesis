@@ -8,7 +8,7 @@ from .db import Base
 
 
 class User(Base):
-    """User account storing identifier and optional password hash."""
+    """The main user account table."""
 
     __tablename__ = "users"
 
@@ -61,7 +61,7 @@ class LoginMode:
 
 
 class SecretEmbedding(Base):
-    """Encrypted semantic data derived from the user's secret (text or voice)."""
+    """Holds the encrypted embeddings and LLM summaries for a user's secret."""
 
     __tablename__ = "secret_embeddings"
 
@@ -91,7 +91,7 @@ class LoginChallengeStatus:
 
 
 class LoginChallenge(Base):
-    """Represents a login attempt context for semantic authentication."""
+    """Tracks a user's active login session/challenge."""
 
     __tablename__ = "login_challenges"
 
@@ -116,7 +116,7 @@ class LoginChallenge(Base):
 
 
 class LoginChallengeGallerySlot(Base):
-    """Six images for a login challenge: one is the user's security image, five are decoys."""
+    """The 6 specific images shown during a login challenge (1 real, 5 fake)."""
 
     __tablename__ = "login_challenge_gallery_slots"
     __table_args__ = (UniqueConstraint("challenge_id", "slot", name="uq_gallery_challenge_slot"),)
@@ -132,7 +132,7 @@ class LoginChallengeGallerySlot(Base):
 
 
 class UserGalleryPoolSlot(Base):
-    """Pre-generated gallery set for a user: one target + five decoys."""
+    """The pre-generated pool of gallery images for a user so we don't have to build them on the fly during login."""
 
     __tablename__ = "user_gallery_pool_slots"
     __table_args__ = (UniqueConstraint("user_id", "slot", name="uq_user_gallery_slot"),)
@@ -158,7 +158,7 @@ class LoginResultType:
 
 
 class LoginEvent(Base):
-    """Audit log entry for an authentication attempt."""
+    """Just an audit log table to see who is logging in and if they succeeded."""
 
     __tablename__ = "login_events"
 

@@ -1,5 +1,4 @@
-"""
-Voice service interfaces for future speech-to-text (STT) and text-to-speech (TTS) integration.
+"""Voice stuff (STT and TTS).
 
 For now these are stubs so that the API surface is defined without committing to
 any specific provider or model. Actual audio handling can be added in a later
@@ -13,20 +12,20 @@ from typing import Protocol
 
 class SpeechToText(Protocol):
     def transcribe(self, audio_bytes: bytes) -> str:
-        """Convert raw audio bytes into text."""
+        """Turn audio into text."""
 
         ...
 
 
 class TextToSpeech(Protocol):
     def synthesize(self, text: str) -> bytes:
-        """Convert text into raw audio bytes."""
+        """Turn text into audio."""
 
         ...
 
 
 class StubSpeechToText:
-    """Placeholder STT implementation.
+    """Base STT interface.
 
     Currently this does not perform real transcription; it only raises a
     NotImplementedError to signal that voice is not yet configured.
@@ -37,7 +36,7 @@ class StubSpeechToText:
 
 
 class StubTextToSpeech:
-    """Placeholder TTS implementation.
+    """Base TTS interface.
 
     Currently this does not perform real synthesis; it only raises a
     NotImplementedError to signal that voice is not yet configured.

@@ -95,7 +95,7 @@ class UserPublic(UserBase):
 
 
 class ProfileResponse(BaseModel):
-    """Current user profile; includes secret_type (text or voice)."""
+    """The user profile we send down to the client."""
 
     id: int
     username: str
@@ -115,7 +115,7 @@ class ProfileResponse(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Optional fields to update on profile; only provided fields are updated. Send null or '' for email to clear it."""
+    """Profile update payload. Just send what you want to change; send an empty string to nuke the email."""
 
     username: Optional[str] = Field(default=None, max_length=255)
     email: Optional[str] = Field(default=None, max_length=255)
@@ -155,7 +155,7 @@ class ProfileUpdate(BaseModel):
 
 
 class SecretUpdateText(BaseModel):
-    """Update semantic secret to a new text phrase (overwrites voice if present)."""
+    """Payload for swapping out the semantic secret."""
 
     secret_text: str = Field(..., min_length=1, max_length=SECRET_TEXT_MAX_LENGTH)
 
@@ -169,7 +169,7 @@ class SecretUpdateText(BaseModel):
 
 
 class GreetingImageUpdate(BaseModel):
-    """Regenerate security greeting image from new image text only (semantic secret unchanged)."""
+    """Payload for spinning up a new security image without touching the semantic secret."""
 
     image_text: str = Field(..., min_length=1, max_length=SECRET_TEXT_MAX_LENGTH)
 

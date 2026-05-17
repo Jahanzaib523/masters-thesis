@@ -71,7 +71,7 @@ def _rebuild_user_gallery_pool(
     user: models.User,
     llm_backend: SemanticLlmBackend,
 ) -> None:
-    """Build/replace user-level gallery pool: one target + five decoys."""
+    """Rebuild the user's pre-generated image gallery."""
     real_b = user.greeting_image_bytes
     real_m = user.greeting_image_mime or "image/png"
     if not real_b:
@@ -153,7 +153,7 @@ def _populate_login_challenge_gallery_from_pool(
 
 
 def _refresh_user_gallery_pool_async(user_id: int, llm_backend: SemanticLlmBackend) -> None:
-    """Rebuild gallery pool in a background thread after successful login."""
+    """Fire off a background job to rebuild the user's gallery after they log in."""
     def _job() -> None:
         db = SessionLocal()
         try:
@@ -170,43 +170,58 @@ def _refresh_user_gallery_pool_async(user_id: int, llm_backend: SemanticLlmBacke
     Thread(target=_job, daemon=True).start()
 
 
-def _generate_user_security_image_async(
-    user_id: int,
+def _generate_user_security_image_sync_and_async(
+    user: models.User,
+    db: Session,
     image_text: str,
     llm_backend: SemanticLlmBackend,
 ) -> None:
-    """Generate user's security image + pool in background (non-blocking for API caller)."""
+    """Generate the main image right away, then spin up the 5 decoys in the background."""
     image_text = (image_text or "").strip()
     if not image_text:
         return
 
+    # 1. Generate the main image so the user sees it immediately
+    try:
+        image_bytes, image_mime, seed, prompt_hash = _generate_greeting_image_with_retry(image_text)
+        user.greeting_image_path = None
+        user.greeting_image_bytes = image_bytes
+        user.greeting_image_mime = image_mime
+        user.greeting_seed = seed
+        user.greeting_prompt_hash = prompt_hash
+        user.greeting_model_name = settings.image_model
+        
+        # 2. Wipe the old gallery to make room for the new ones
+        db.query(models.UserGalleryPoolSlot).filter(models.UserGalleryPoolSlot.user_id == user.id).delete()
+        
+        db.commit()
+        db.refresh(user)
+        logger.info("user security image generated synchronously user_id=%s", user.id)
+    except Exception:
+        logger.exception("user security image sync generation failed user_id=%s", user.id)
+        return
+
+    user_id = user.id
+
+    # 3. Kick off the decoy generation in the background
     def _job() -> None:
-        db = SessionLocal()
+        local_db = SessionLocal()
         try:
-            user = db.query(models.User).filter(models.User.id == user_id).first()
-            if not user:
+            local_user = local_db.query(models.User).filter(models.User.id == user_id).first()
+            if not local_user:
                 return
-            image_bytes, image_mime, seed, prompt_hash = _generate_greeting_image_with_retry(image_text)
-            user.greeting_image_path = None
-            user.greeting_image_bytes = image_bytes
-            user.greeting_image_mime = image_mime
-            user.greeting_seed = seed
-            user.greeting_prompt_hash = prompt_hash
-            user.greeting_model_name = settings.image_model
-            db.commit()
-            db.refresh(user)
-            _rebuild_user_gallery_pool(db, user, llm_backend)
-            logger.info("user security image generated user_id=%s", user_id)
+            _rebuild_user_gallery_pool(local_db, local_user, llm_backend)
+            logger.info("user security gallery pool generated user_id=%s", user_id)
         except Exception:
-            logger.exception("user security image generation failed user_id=%s", user_id)
+            logger.exception("user security gallery pool generation failed user_id=%s", user_id)
         finally:
-            db.close()
+            local_db.close()
 
     Thread(target=_job, daemon=True).start()
 
 
 def _text_signature(text: str) -> set[str]:
-    """Small lexical signature for diversity checks."""
+    """Quick fingerprint to make sure we aren't generating duplicate decoys."""
     tokens = [t for t in "".join(ch.lower() if ch.isalnum() else " " for ch in text).split() if len(t) > 2]
     return set(tokens)
 
@@ -244,7 +259,7 @@ def _fallback_decoy_texts() -> list[str]:
 
 
 def _extract_json_array_from_text(text: str) -> list[str]:
-    """Parse JSON array even if model adds surrounding prose/markdown."""
+    """Extract the JSON array even if the LLM wraps it in markdown blocks."""
     raw = (text or "").strip()
     if not raw:
         return []
@@ -277,7 +292,7 @@ def _extract_json_array_from_text(text: str) -> list[str]:
 
 
 def _build_decoy_image_texts(challenge_id: int, llm_backend: SemanticLlmBackend) -> list[str]:
-    """Generate 5 diverse decoy image prompts, using selected semantic LLM or fallback."""
+    """Ask the LLM to come up with 5 random decoy prompts."""
     try:
         system_seed = f"challenge-{challenge_id}-{hashlib.sha256(str(challenge_id).encode()).hexdigest()[:8]}"
         system_prompt = (
@@ -341,11 +356,12 @@ def _parse_lockout_delays() -> list[int]:
 
 
 def _is_temporarily_locked(user: models.User) -> bool:
+    """Check if the current timestamp is within the user's lockout window."""
     return bool(user.semantic_locked_until and user.semantic_locked_until > datetime.utcnow())
 
 
 def _apply_progressive_user_lockout(user: models.User) -> tuple[Optional[int], bool]:
-    """Increment shared failure counter and apply progressive lockout policy.
+    """Bump the failure counter and lock the account if they failed too many times.
 
     Returns:
     - retry_after_seconds (temporary lockout duration) or None
@@ -373,7 +389,7 @@ def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ) -> models.User:
-    """Require valid JWT and return the current user; otherwise 401."""
+    """Grab the user from the JWT; throw a 401 if it's invalid."""
     if not credentials or credentials.scheme != "Bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -410,7 +426,7 @@ def register_user_core(
     db: Session,
     llm_backend: SemanticLlmBackend,
 ) -> schemas.UserPublic:
-    """Register a new user and store encrypted semantic embeddings for their secret."""
+    """Handle user registration and secure their semantic secret."""
 
     conditions = [models.User.username == payload.username]
     if payload.email:
@@ -450,7 +466,7 @@ def register_user_core(
     db.add(secret_embedding)
     db.commit()
     db.refresh(user)
-    _generate_user_security_image_async(user.id, payload.image_text, llm_backend)
+    _generate_user_security_image_sync_and_async(user, db, payload.image_text, llm_backend)
 
     return user
 
@@ -461,7 +477,7 @@ def register_account(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.UserPublic:
-    """HTTP: register with optional X-Semantic-LLM-Provider: openai for OpenAI chat LLM."""
+    """HTTP wrapper: Register a new user."""
 
     return register_user_core(payload, db, llm_backend)
 
@@ -472,7 +488,7 @@ def login_init(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.LoginInitResponse:
-    """Initialize a semantic login challenge for the given identifier."""
+    """Kick off a new login session for the user."""
 
     user = db.query(models.User).filter(
         or_(models.User.username == payload.identifier, models.User.email == payload.identifier)
@@ -586,7 +602,7 @@ def get_login_challenge_gallery_image(
     slot: int,
     db: Session = Depends(get_db),
 ) -> Response:
-    """Serve one gallery tile for a valid login challenge (six-tile security image pick)."""
+    """Serve a specific image tile for the login challenge."""
     if slot < 0 or slot > 5:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slot must be 0-5.")
     challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
@@ -616,7 +632,7 @@ def pick_login_challenge_greeting_image(
     payload: schemas.GreetingImagePickRequest,
     db: Session = Depends(get_db),
 ) -> schemas.GreetingImagePickResult:
-    """Pick which tile is the user's security image. Three wrong picks hard-lock the account."""
+    """Process the user's tile selection. Too many bad guesses locks the account."""
     challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found.")
@@ -719,7 +735,7 @@ def login_complete_core(
     db: Session,
     llm_backend: SemanticLlmBackend,
 ) -> schemas.LoginResult:
-    """Complete a semantic login challenge by comparing user input with stored embeddings."""
+    """Finish the login flow by checking if their text matches the secret."""
 
     challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == payload.challenge_id).first()
     if not challenge:
@@ -906,7 +922,7 @@ def login_complete(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.LoginResult:
-    """HTTP: complete login; optional X-Semantic-LLM-Provider: openai."""
+    """HTTP wrapper: Complete the login process."""
 
     return login_complete_core(payload, db, llm_backend)
 
@@ -938,7 +954,7 @@ def _profile_response(user: models.User, db: Session) -> schemas.ProfileResponse
 def preview_registration_greeting_image(
     payload: schemas.RegistrationPreviewRequest,
 ) -> Response:
-    """Generate a preview greeting image from image_text before final registration."""
+    """Generate a quick preview image so the user can see what it looks like before saving."""
     try:
         image_bytes, image_mime, _, _ = generate_greeting_image(payload.image_text)
     except Exception as exc:
@@ -954,7 +970,7 @@ def get_profile(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> schemas.ProfileResponse:
-    """Get current user profile (username, email, secret_type)."""
+    """Return the user's profile info."""
     return _profile_response(user, db)
 
 
@@ -965,8 +981,8 @@ def update_profile_greeting_image(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.ProfileResponse:
-    """Regenerate security greeting image from new image text (semantic secret unchanged)."""
-    _generate_user_security_image_async(user.id, payload.image_text, llm_backend)
+    """Update the user's greeting image without touching their semantic secret."""
+    _generate_user_security_image_sync_and_async(user, db, payload.image_text, llm_backend)
     return _profile_response(user, db)
 
 
@@ -974,7 +990,7 @@ def update_profile_greeting_image(
 def get_profile_greeting_image(
     user: models.User = Depends(get_current_user),
 ) -> Response:
-    """Show current security greeting image in the settings panel."""
+    """Serve the user's current greeting image."""
     if not user.greeting_image_bytes:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Greeting image not found.")
     return Response(content=user.greeting_image_bytes, media_type=user.greeting_image_mime or "image/png")
@@ -986,7 +1002,7 @@ def update_profile_login_mode(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> schemas.ProfileResponse:
-    """Set login mode (both or image_only). Applied to next login challenge immediately."""
+    """Toggle between 'both factors' and 'image only' modes."""
     user.login_mode = payload.login_mode
     db.commit()
     db.refresh(user)
@@ -999,7 +1015,7 @@ def update_profile(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> schemas.ProfileResponse:
-    """Update username, email, and/or password. Only provided fields are updated."""
+    """Update basic profile fields."""
     if payload.username is not None:
         existing = db.query(models.User).filter(
             models.User.username == payload.username,
@@ -1040,7 +1056,7 @@ def _replace_secret_for_user(
     secret_type: str,
     llm_backend: SemanticLlmBackend,
 ) -> None:
-    """Remove all existing secret embeddings for user and add one new one (text or voice)."""
+    """Nuke the old semantic secrets and save the new one."""
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(
@@ -1072,7 +1088,7 @@ def update_profile_secret_text(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.ProfileResponse:
-    """Set semantic secret to a new text phrase. Overwrites voice secret if present (one per account)."""
+    """Change the semantic secret to a new text phrase."""
     _replace_secret_for_user(db, user.id, payload.secret_text, models.SecretType.TEXT, llm_backend)
     db.commit()
     db.refresh(user)
@@ -1086,7 +1102,7 @@ async def update_profile_secret_voice(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ) -> schemas.ProfileResponse:
-    """Set semantic secret from spoken audio. Overwrites text secret if present (one per account)."""
+    """Change the semantic secret via voice upload."""
     audio_bytes = await file.read()
     secret_text = transcribe_audio(file.filename or "audio.wav", audio_bytes)
     if not secret_text:
@@ -1115,7 +1131,7 @@ async def update_profile_secret_voice(
 
 
 def text_to_speech(text: str) -> Response:
-    """Convert text to speech audio. Returns WAV audio for accessibility."""
+    """Convert some text to a playable WAV file."""
 
     audio_bytes = synthesize_speech(text)
     if not audio_bytes:
@@ -1133,7 +1149,7 @@ def text_to_speech(text: str) -> Response:
 
 @router.get("/tts/prompt/{challenge_id}")
 def get_prompt_audio(challenge_id: int, db: Session = Depends(get_db)) -> Response:
-    """Get the login prompt as spoken audio for blind users."""
+    """Fetch the login prompt audio."""
 
     challenge = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
     if not challenge:
@@ -1175,10 +1191,7 @@ def request_unlock_recovery(
     payload: schemas.RecoveryRequest,
     db: Session = Depends(get_db),
 ) -> schemas.RecoveryResponse:
-    """Issue an email recovery token for hard-locked accounts.
-
-    In this prototype, token is returned in response for local testing.
-    """
+    """Generate a recovery token to email to the user."""
     user = db.query(models.User).filter(
         or_(models.User.username == payload.identifier, models.User.email == payload.identifier)
     ).first()
@@ -1207,7 +1220,7 @@ def confirm_unlock_recovery(
     payload: schemas.RecoveryConfirmRequest,
     db: Session = Depends(get_db),
 ) -> schemas.RecoveryResponse:
-    """Confirm unlock token and clear hard lock state."""
+    """Use the recovery token to unlock the account."""
     token_payload = decode_access_token(payload.token)
     if not token_payload or token_payload.get("purpose") != "semantic_unlock":
         raise HTTPException(
@@ -1242,11 +1255,7 @@ def admin_reset_user_lockout(
     secret: str,
     db: Session = Depends(get_db),
 ) -> schemas.AdminResetResponse:
-    """Admin-only emergency reset endpoint for locked users.
-
-    Requires query param `secret` matching ADMIN_UNLOCK_SECRET in env.
-    Example: POST /auth/reset/hammad?secret=your_admin_secret
-    """
+    """Emergency admin backdoor to unlock an account."""
     configured = (settings.admin_unlock_secret or "").strip()
     if not configured:
         raise HTTPException(

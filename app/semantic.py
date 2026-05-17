@@ -23,21 +23,21 @@ Vector = List[float]
 
 
 class SemanticService:
-    """Interface for semantic embedding and similarity operations."""
+    """Base class for our embedding and similarity logic."""
 
     def embed(self, text: str) -> Vector:
-        """Convert input text into a numeric vector representation."""
+        """Turn text into an array of numbers (an embedding)."""
 
         raise NotImplementedError
 
     def similarity(self, a: Sequence[float], b: Sequence[float]) -> float:
-        """Return similarity score between two embedding vectors in [0, 1]."""
+        """Compare two embeddings and return a score from 0 (different) to 1 (exact match)."""
 
         raise NotImplementedError
 
 
 class HFSentenceTransformerSemanticService(SemanticService):
-    """Semantic service backed by a HuggingFace sentence-transformers model."""
+    """Our local Hugging Face sentence-transformers embedding setup."""
 
     def __init__(self, model_name: str) -> None:
         self._model_name = model_name
@@ -65,7 +65,7 @@ class HFSentenceTransformerSemanticService(SemanticService):
 
 @lru_cache
 def load_sentence_transformer(model_name: str) -> SentenceTransformer:
-    """Load and cache a sentence-transformers model."""
+    """Spin up and cache the local sentence-transformers model so we don't load it twice."""
     # Keep HF Hub auth aligned with resolved token (settings + process env).
     tok = resolve_hf_api_token()
     if tok:
@@ -75,13 +75,13 @@ def load_sentence_transformer(model_name: str) -> SentenceTransformer:
 
 
 def vector_to_bytes(vector: Vector) -> bytes:
-    """Serialize a numeric vector into bytes for storage."""
+    """Convert an embedding vector into raw bytes so we can stick it in the database."""
 
     return json.dumps(vector).encode("utf-8")
 
 
 def bytes_to_vector(data: bytes) -> Vector:
-    """Deserialize bytes back into a numeric vector."""
+    """Convert database bytes back into an embedding vector."""
 
     loaded = json.loads(data.decode("utf-8"))
     return [float(x) for x in loaded]

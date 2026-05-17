@@ -1,4 +1,4 @@
-"""Password hashing using bcrypt. Passwords are truncated to 72 bytes (bcrypt limit)."""
+"""Bcrypt password hashing."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ BCRYPT_MAX_PASSWORD_BYTES = 72
 
 
 def _to_72_bytes(password: str) -> bytes:
-    """Return password as bytes, truncated to 72 bytes for bcrypt."""
+    """Chop the password down to 72 bytes so bcrypt doesn't choke."""
     encoded = password.encode("utf-8")
     if len(encoded) > BCRYPT_MAX_PASSWORD_BYTES:
         return encoded[:BCRYPT_MAX_PASSWORD_BYTES]
@@ -17,7 +17,7 @@ def _to_72_bytes(password: str) -> bytes:
 
 
 def hash_password(password: str | None) -> str | None:
-    """Hash a password with bcrypt. Returns None for empty/None password."""
+    """Hash a password."""
     if not password:
         return None
     salt = bcrypt.gensalt()
@@ -26,7 +26,7 @@ def hash_password(password: str | None) -> str | None:
 
 
 def verify_password(password: str | None, password_hash: str | None) -> bool:
-    """Verify a password against a bcrypt hash."""
+    """Check if the password matches the hash."""
     if not password or not password_hash:
         return False
     return bcrypt.checkpw(_to_72_bytes(password), password_hash.encode("utf-8"))

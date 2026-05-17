@@ -16,13 +16,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Base(DeclarativeBase):
-    """Base class for ORM models."""
+    """Base class for all our database models."""
 
     pass
 
 
 def get_db():
-    """FastAPI dependency that provides a database session."""
+    """Dependency to grab a database session for API routes."""
 
     db = SessionLocal()
     try:

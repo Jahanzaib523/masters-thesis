@@ -70,17 +70,16 @@ def _extract_image_bytes(payload: dict[str, Any]) -> bytes | None:
 
 
 def _pil_to_png_bytes(image_obj: Any) -> bytes:
-    """Convert a PIL.Image returned by InferenceClient.text_to_image into PNG bytes."""
+    """Take the PIL image from Hugging Face and convert it to raw PNG bytes."""
+    """Convert PIL image object to raw PNG bytes."""
     buffer = io.BytesIO()
     image_obj.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
 def _generate_image_hf(prompt: str, seed: int) -> bytes:
-    """Generate an image via Hugging Face Inference Providers.
-
-    Uses `huggingface_hub.InferenceClient.text_to_image` so the request is routed through HF
-    to whichever provider currently serves the configured model (e.g. fal-ai, replicate).
+    """Ask Hugging Face to generate an image from a text prompt.
+    Uses either the standard inference API or a specific inference endpoint if configured.
     The legacy `api-inference.huggingface.co/models/<id>` URL is no longer used because most
     image-generation models (incl. FLUX) are not exposed there.
     """
@@ -171,7 +170,7 @@ def _generate_image_hf(prompt: str, seed: int) -> bytes:
 
 
 def get_image_generation_health() -> dict[str, Any]:
-    """Return configuration and lightweight connectivity checks for image generation."""
+    """Ping the image provider to make sure everything is configured and online."""
     provider = settings.image_provider.lower().strip()
     health: dict[str, Any] = {
         "provider": provider,
@@ -215,7 +214,7 @@ def get_image_generation_health() -> dict[str, Any]:
 
 
 def generate_decoy_greeting_image(seed_key: str, decoy_index: int, decoy_text: str) -> tuple[bytes, str]:
-    """HF-generated decoy unrelated to any user secret (deterministic per seed key + index)."""
+    """Generate a fake decoy image using a deterministic seed so it's consistent."""
     prompt = (
         f"Create a decoy security illustration representing: '{decoy_text}'. "
         "Must be unrelated to any specific user's secret image. "
@@ -231,7 +230,7 @@ def generate_decoy_greeting_image(seed_key: str, decoy_index: int, decoy_text: s
 
 
 def generate_greeting_image(secret_text: str) -> tuple[bytes, str, int, str]:
-    """Generate deterministic greeting image bytes and reproducibility metadata."""
+    """Generate the real greeting image and save the seed/hash so we can reproduce it later if needed."""
     provider = settings.image_provider.lower().strip()
     if provider not in {"hf", "huggingface"}:
         raise RuntimeError("Only image_provider=hf is supported in this build.")

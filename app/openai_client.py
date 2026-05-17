@@ -1,5 +1,4 @@
-"""
-OpenAI Chat Completions for semantic summary + similarity scoring.
+"""OpenAI client for semantic checks and summaries."""
 
 Uses the same prompts as Groq. Configure model via OPENAI_MODEL (default: gpt-4o-mini).
 See: https://platform.openai.com/docs/api-reference/chat/create
@@ -31,7 +30,7 @@ def get_openai_client() -> OpenAI:
 
 
 def score_semantic_similarity(secret_text: str, attempt_text: str) -> Optional[float]:
-    """Score semantic similarity using OpenAI Chat Completions. Returns [0,1] or None."""
+    """Use OpenAI to rate how similar two concepts are (0 to 1)."""
 
     try:
         client = get_openai_client()
@@ -65,7 +64,7 @@ def score_semantic_similarity(secret_text: str, attempt_text: str) -> Optional[f
 
 
 def generate_semantic_summary(text: str) -> Optional[str]:
-    """Generate stored semantic summary via OpenAI Chat Completions."""
+    """Use OpenAI to summarize the secret text."""
 
     try:
         client = get_openai_client()
@@ -97,7 +96,7 @@ def generate_text_with_prompt(
     temperature: float = 0.0,
     max_tokens: int = 300,
 ) -> Optional[str]:
-    """Generic OpenAI chat helper for specialized tasks (e.g. JSON decoy prompt generation)."""
+    """Generic helper to ping OpenAI for things like generating decoy prompts."""
     try:
         client = get_openai_client()
     except RuntimeError as exc:

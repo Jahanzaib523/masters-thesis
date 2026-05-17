@@ -1,12 +1,12 @@
-# Semantic Authentication System documentation
+# Semantic Authentication System (SAS) docs
 
-This folder contains the **product and system specification** for SAS: user stories, use cases, UML views, software architecture, persistence schema, and API structure.
+This folder holds the specs for SAS. You'll find user stories, use cases, architecture diagrams, database schema, and API info here.
 
 | Document | Description |
 |----------|-------------|
-| [USER_STORIES.md](./USER_STORIES.md) | User-facing needs in story form |
-| [USE_CASES.md](./USE_CASES.md) | System behaviour by use case |
-| [UML_DIAGRAMS.md](./UML_DIAGRAMS.md) | Structural and behavioural UML (Mermaid) |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Logical architecture and AI integration |
-| [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Entity–relationship model |
-| [API_ARCHITECTURE.md](./API_ARCHITECTURE.md) | REST surface and authentication boundaries |
+| [USER_STORIES.md](./USER_STORIES.md) | What users need and why |
+| [USE_CASES.md](./USE_CASES.md) | How the system actually behaves |
+| [UML_DIAGRAMS.md](./UML_DIAGRAMS.md) | Mermaid diagrams for structure and flow |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the app and AI integrations fit together |
+| [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Database tables and relationships |
+| [API_ARCHITECTURE.md](./API_ARCHITECTURE.md) | API endpoints and auth rules |

@@ -32,14 +32,10 @@ export function Profile() {
   const [greetingSaving, setGreetingSaving] = useState(false)
   const [greetingSuccess, setGreetingSuccess] = useState(false)
   const [currentGreetingUrl, setCurrentGreetingUrl] = useState<string | null>(null)
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
-  const [previewReady, setPreviewReady] = useState(false)
-  const [previewLoading, setPreviewLoading] = useState(false)
   const [loginMode, setLoginMode] = useState<'both' | 'image_only'>('both')
   const [modeSaving, setModeSaving] = useState(false)
   const [recording, setRecording] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
-  const [initialImageFetched, setInitialImageFetched] = useState(false)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
   const pendingVoiceFile = useRef<File | null>(null)
   const chunks = useRef<Blob[]>([])
@@ -72,8 +68,7 @@ export function Profile() {
 
   useEffect(() => {
     const token = getToken()
-    if (!token || !profile || initialImageFetched) return
-    setInitialImageFetched(true)
+    if (!token || !profile) return
     fetch(api.getProfileGreetingImageUrl(), {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -97,8 +92,6 @@ export function Profile() {
       if (currentGreetingUrl) URL.revokeObjectURL(currentGreetingUrl)
     }
   }, [currentGreetingUrl])
-
-
 
   const emailInvalid = profile ? (email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) : false
 
@@ -170,58 +163,17 @@ export function Profile() {
     }
     setError(null)
     setGreetingSuccess(false)
-
-    if (!previewReady) {
-      setPreviewLoading(true)
-      try {
-        const blob = await api.previewGreetingImage(t)
-        setPreviewImageUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev)
-          return URL.createObjectURL(blob)
-        })
-        setPreviewReady(true)
-      } catch (err) {
-        setError(userFriendlyMessage(err instanceof Error ? err.message : 'Preview failed', 'profile'))
-      } finally {
-        setPreviewLoading(false)
-      }
-      return
-    }
-
     setGreetingSaving(true)
     try {
       const p = await api.updateProfileGreetingImage(t)
       setProfile(p)
       setGreetingSuccess(true)
       setGreetingImageText('')
-      setPreviewReady(false)
-      if (previewImageUrl) {
-        setCurrentGreetingUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev)
-          return previewImageUrl
-        })
-        setPreviewImageUrl(null)
-      }
     } catch (err) {
       setError(userFriendlyMessage(err instanceof Error ? err.message : 'Update failed', 'profile'))
     } finally {
       setGreetingSaving(false)
     }
-  }
-
-  const handleClearImage = () => {
-    setGreetingImageText('')
-    setPreviewReady(false)
-    setPreviewImageUrl((prev) => {
-      if (prev) {
-        try {
-          URL.revokeObjectURL(prev)
-        } catch (e) {
-          // ignore
-        }
-      }
-      return null
-    })
   }
 
   const handleUpdateLoginMode = async (mode: 'both' | 'image_only') => {
@@ -587,7 +539,6 @@ export function Profile() {
             rows={2}
             value={greetingImageText}
             onChange={(e) => setGreetingImageText(e.target.value)}
-            onInput={() => { setPreviewReady(false); if (previewImageUrl) { URL.revokeObjectURL(previewImageUrl); setPreviewImageUrl(null) } }}
             className="block w-full rounded-lg border border-slate-300 px-3 py-2"
             placeholder="Describe the illustration you will recognize at login"
             minLength={1}
@@ -596,42 +547,19 @@ export function Profile() {
           <p className="text-xs text-slate-500" aria-live="polite">
             {greetingImageText.length}/{SECRET_MAX_CHARS} characters
           </p>
-
-          {previewImageUrl && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-medium text-slate-700">Preview your security image</p>
-              <img
-                src={previewImageUrl}
-                alt="Registration greeting preview"
-                className="mt-2 h-32 w-32 rounded-md border border-slate-200 object-cover"
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={
-                greetingSaving ||
-                previewLoading ||
-                !greetingImageText.trim() ||
-                greetingImageText.trim().length > SECRET_MAX_CHARS
-              }
-              aria-busy={greetingSaving || previewLoading}
-              className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center"
-            >
-              {(greetingSaving || previewLoading) && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
-              {greetingSaving ? 'Saving…' : previewLoading ? 'Generating preview…' : previewReady ? 'Save security image' : 'Preview image'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleClearImage}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:ring-2 focus:ring-slate-200"
-            >
-              Clear prompt & preview
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={
+              greetingSaving ||
+              !greetingImageText.trim() ||
+              greetingImageText.trim().length > SECRET_MAX_CHARS
+            }
+            aria-busy={greetingSaving}
+            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center"
+          >
+            {greetingSaving && <span className="sas-spinner sas-spinner-sm" aria-hidden />}
+            {greetingSaving ? 'Generating…' : 'Update security image'}
+          </button>
           {greetingSuccess && (
             <p className="text-sm text-green-600" role="status">Security image updated. Use this image next time you sign in.</p>
           )}

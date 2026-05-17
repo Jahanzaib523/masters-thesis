@@ -157,14 +157,37 @@ sequenceDiagram
   Client->>API: Submit registration
   API->>Emb: Embed secret phrase
   API->>SemLLM: Derive semantic summary for storage
-  API->>Store: Persist user and secret material
+  API->>Img: Generate primary security image (synchronous)
+  API->>Store: Persist user, secret material, and primary image
   API-->>Client: Account created
-  Note over API,Img: Security image and decoy gallery are prepared asynchronously
+  Note over API,Img: Generate the 5 decoys in the background
 ```
 
 ---
 
-## 5. Semantic LLM provider (Groq vs OpenAI)
+## 5. Sequence: Profile Security Image Update
+
+```mermaid
+sequenceDiagram
+  participant Client as Web client
+  participant API as SAS REST API
+  participant Store as Data store
+  participant Img as Image provider
+
+  Client->>API: Request greeting image preview
+  API->>Img: Generate image from description
+  API-->>Client: Preview image
+
+  Client->>API: Submit new security image description
+  API->>Img: Generate primary security image (synchronous)
+  API->>Store: Delete old gallery, update primary image
+  API-->>Client: Profile updated
+  Note over API,Img: Spin up 5 new decoys in the background
+```
+
+---
+
+## 6. Semantic LLM provider (Groq vs OpenAI)
 
 ```mermaid
 flowchart LR
@@ -189,7 +212,7 @@ Default semantic operations use **Groq**. When the client marks **OpenAI** for s
 
 ---
 
-## 6. State machine — Login challenge lifecycle
+## 7. State machine — Login challenge lifecycle
 
 ```mermaid
 stateDiagram-v2

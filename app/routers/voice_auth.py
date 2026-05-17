@@ -21,7 +21,7 @@ async def voice_register_service(
     db: Session,
     llm_backend: SemanticLlmBackend,
 ) -> schemas.UserPublic:
-    """Transcribe audio then register (shared by /auth/voice/register and web UI)."""
+    """Take the voice note, transcribe it, and register the user."""
 
     audio_bytes = await file.read()
     secret_text = transcribe_audio(file.filename or "audio.wav", audio_bytes)
@@ -70,7 +70,7 @@ async def voice_register(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ):
-    """Voice-based registration: transcribe spoken secret, then register."""
+    """Endpoint for registering via voice instead of typing."""
 
     return await voice_register_service(username, email, password, image_text, file, db, llm_backend)
 
@@ -82,7 +82,7 @@ def voice_login_init(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ):
-    """Initialize voice login challenge (same as text init, just form-based)."""
+    """Kick off a voice login challenge."""
 
     payload = schemas.LoginInitRequest(identifier=identifier, password=password)
     return login_init(payload, db, llm_backend)
@@ -94,7 +94,7 @@ async def voice_login_complete_service(
     db: Session,
     llm_backend: SemanticLlmBackend,
 ) -> schemas.LoginResult:
-    """Transcribe login response then complete challenge."""
+    """Process the spoken login answer."""
 
     audio_bytes = await file.read()
     response_text = transcribe_audio(file.filename or "audio", audio_bytes)
@@ -115,6 +115,6 @@ async def voice_login_complete(
     db: Session = Depends(get_db),
     llm_backend: SemanticLlmBackend = Depends(get_semantic_llm_backend),
 ):
-    """Complete voice login: transcribe spoken response, then run semantic login."""
+    """Endpoint to finish login using a spoken phrase."""
 
     return await voice_login_complete_service(challenge_id, file, db, llm_backend)

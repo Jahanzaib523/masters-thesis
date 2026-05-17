@@ -1,4 +1,4 @@
-"""Dispatch semantic summary + similarity to Groq or OpenAI based on client preference."""
+"""Routes semantic requests to either Groq or OpenAI depending on what the client asked for."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def generate_text_with_prompt(
     temperature: float = 0.0,
     max_tokens: int = 300,
 ) -> Optional[str]:
-    """Dispatch generic text generation to selected backend."""
+    """Send a prompt to the requested LLM backend and get text back."""
     if backend == SemanticLlmBackend.openai:
         return openai_client.generate_text_with_prompt(
             system_prompt,

@@ -1,16 +1,18 @@
-# Use cases: Semantic Authentication System (SAS)
+# Use Cases
 
-**Primary actor:** End user  
-**Secondary actors:** SAS application, external AI services (**Groq** for default LLM / speech / TTS; **OpenAI** as an optional alternative for semantic operations when enabled), **Hugging Face** (image generation and hub access), **administrator** (lockout recovery operations)
+**Who's involved:** 
+- **The User**
+- **The System** (our SAS app, plus external AI APIs like Groq for text/speech, OpenAI if enabled, and Hugging Face for images)
+- **Admin** (for manual account recovery)
 
 ---
 
 ## UC-01 Register with text secret
 
-- **Goal:** Create an account with password, typed semantic secret, and greeting-image description.
+- **Goal:** Sign up with a username/password, type out a secret concept, and describe an image.
 - **Preconditions:** None.
-- **Main success scenario:** The system validates input, stores credentials and encrypted semantic material, generates a semantic summary via the configured LLM provider, and prepares the user’s security image and six-tile gallery asynchronously; the user can proceed to sign-in.
-- **Extensions:** Duplicate username or email; password policy failure; image generation unavailable.
+- **Main success scenario:** We validate the input, securely store the credentials, run the secret through an LLM to generate a summary, and spin up the user's primary security image and decoys. The user is then ready to log in.
+- **Extensions:** Username/email already taken, weak password, or the image API is down.
 
 ---
 
@@ -24,18 +26,18 @@
 
 ## UC-03 Preview greeting image
 
-- **Goal:** Visual confirmation of the image implied by the user’s description before registration is finalized.
-- **Preconditions:** Non-empty image description within length limits.
-- **Main success scenario:** The system returns generated image content for display.
+- **Goal:** Show the user what their image prompt actually generates before they commit to it.
+- **Preconditions:** The user types a valid image description.
+- **Main success scenario:** We generate and return a temporary image for them to look at.
 
 ---
 
 ## UC-04 Initialize login (password gate)
 
-- **Goal:** Start an authenticated challenge after verifying identifier and password.
-- **Preconditions:** Account exists, password valid, account not in a blocking lockout state, security image and gallery pool materialized.
-- **Main success scenario:** A login challenge is created; six gallery image references and semantic-step metadata are returned.
-- **Extensions:** Unknown identifier; wrong password; temporary cooldown; hard lock; image or gallery not yet ready.
+- **Goal:** Kick off the login process by checking their username and password.
+- **Preconditions:** The account exists, password is correct, account isn't locked, and their gallery images are ready.
+- **Main success scenario:** We start a login challenge and send back their 6 gallery images plus instructions for the next step.
+- **Extensions:** Wrong username/password, account locked, or images still building.
 
 ---
 

@@ -42,7 +42,7 @@ def create_signed_token(
 
 
 def decode_access_token(token: str) -> Dict[str, Any] | None:
-    """Decode and validate JWT; return payload or None if invalid/expired."""
+    """Crack open the JWT and make sure it's valid."""
     if not settings.jwt_secret_key:
         return None
     try:

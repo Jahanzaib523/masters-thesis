@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* SAS design tokens */
+:root {
+  --sas-ink: #0f172a;
+  --sas-surface: #f8fafc;
+  --sas-primary: #0ea5e9;
+  --sas-primary-hover: #0284c7;
+  --sas-success: #10b981;
+  --sas-error: #ef4444;
+  --sas-muted: #64748b;
+  --sas-border: #e2e8f0;
+  --sas-radius: 0.5rem;
+  --sas-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+  --sas-font: "DM Sans", system-ui, sans-serif;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--sas-font);
+  background: var(--sas-surface);
+  color: var(--sas-ink);
+  -webkit-font-smoothing: antialiased;
+  font-size: 16px; /* prevents zoom on focus in iOS when inputs use 16px */
+}
+
+#root {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Touch targets: minimum 44px for primary actions on mobile */
+@media (max-width: 640px) {
+  button[type="submit"],
+  .min-touch {
+    min-height: 44px;
+  }
+}
+
+/* Safe area for notched devices (e.g. iPhone) - applied via Tailwind or component padding */
+
+/* Focus for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--sas-primary);
+  outline-offset: 2px;
+}
+
+/* Subtle transitions for interactive panels */
+@media (prefers-reduced-motion: no-preference) {
+  button, a, input, textarea, [role="tab"] {
+    transition-duration: 0.15s;
+  }
+}
+
+/* Loading spinner for visibility of system status */
+.sas-spinner {
+  width: 1.25em;
+  height: 1.25em;
+  border: 2px solid var(--sas-border);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: sas-spin 0.6s linear infinite;
+  vertical-align: middle;
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+.sas-spinner-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 1.5px;
+  margin-right: 0.375rem;
+}
+@keyframes sas-spin {
+  to { transform: rotate(360deg); }
+}

@@ -136,11 +136,11 @@ The **selected provider** is **Groq** unless the client requests **OpenAI** for 
 
 | Part | Responsibility |
 |------|------------------|
-| **Web client** | Guided flows, optional OpenAI/Groq preference for semantic calls, secure token storage in the browser, accessibility affordances (voice, TTS). |
+| **Web client** | Guided flows (including explicit image preview), optional OpenAI/Groq preference for semantic calls, secure token storage in the browser, accessibility affordances (voice, TTS). |
 | **HTTP surface** | REST JSON and multipart for voice; optional legacy HTML flows under a separate path prefix. |
 | **Authentication core** | Password hashing, challenge lifecycle, JWT contents, profile updates. |
 | **Semantic core** | Summary generation at enrolment; similarity at verification; similarity bands for logging. |
-| **Visual security** | User-level gallery pool; per-challenge copies; regeneration after successful login where applicable. |
+| **Visual security** | Explicit preview step; hybrid generation (synchronous target, asynchronous decoys); user-level gallery pool; per-challenge copies; regeneration after successful login. |
 | **Persistence** | Users, embeddings, challenges, binary image slots, anonymised login events. |
 | **Cryptography** | Encryption of material that must not appear as plaintext at rest. |
 

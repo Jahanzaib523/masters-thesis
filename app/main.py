@@ -16,7 +16,7 @@ from .greeting_image import get_image_generation_health
 
 
 def create_app() -> FastAPI:
-    """Application factory for the SAS FastAPI app."""
+    """Main entry point for the FastAPI app."""
 
     app = FastAPI(
         title=settings.app_name,
@@ -110,7 +110,7 @@ Base.metadata.create_all(bind=engine)
 
 
 def _ensure_user_greeting_image_columns() -> None:
-    """Lightweight schema migration for DB-stored greeting images."""
+    """Quick script to make sure the database has the right columns for greeting images."""
     with engine.begin() as conn:
         inspector = inspect(conn)
         cols = {col["name"] for col in inspector.get_columns("users")}
@@ -126,7 +126,7 @@ _ensure_user_greeting_image_columns()
 
 
 def _ensure_login_challenge_gallery() -> None:
-    """Migrations for 6-image login gallery and challenge verification columns."""
+    """Add columns for the 6-image login challenge."""
     with engine.begin() as conn:
         inspector = inspect(conn)
         tables = inspector.get_table_names()
@@ -164,7 +164,7 @@ _ensure_login_challenge_gallery()
 
 
 def _ensure_user_gallery_pool() -> None:
-    """Migration for user-level pre-generated gallery slots."""
+    """Add columns for pre-generated galleries."""
     with engine.begin() as conn:
         inspector = inspect(conn)
         tables = inspector.get_table_names()
