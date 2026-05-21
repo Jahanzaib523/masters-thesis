@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import inspect, text
 
 from .config import log_hf_env_diagnostics, resolve_hf_api_token, settings
@@ -83,6 +83,10 @@ def create_app() -> FastAPI:
     # Web UI (HTML forms)
     app.include_router(web_routes.router, prefix="/web", tags=["web"])
 
+    @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+    def serve_robots():
+        return "User-agent: *\nDisallow: /\n"
+
     # Static files (Jinja2 web UI)
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -93,12 +97,12 @@ def create_app() -> FastAPI:
 
         @app.get("/{path:path}", include_in_schema=False)
         def serve_spa(path: str):
-            if path.startswith(("auth/", "auth", "health", "web/", "static/", "docs", "openapi.json", "assets/")):
-                from fastapi import HTTPException
-                raise HTTPException(404)
-            index_path = frontend_dist / "index.html"
-            if index_path.is_file():
-                return FileResponse(str(index_path))
+            # Only serve index.html for known React Router pages
+            clean_path = path.strip("/")
+            if clean_path in ("", "register", "login", "result", "profile", "help"):
+                index_path = frontend_dist / "index.html"
+                if index_path.is_file():
+                    return FileResponse(str(index_path))
             from fastapi import HTTPException
             raise HTTPException(404)
 
