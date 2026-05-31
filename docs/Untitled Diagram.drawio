@@ -1,0 +1,74 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="fEPXtIItUxDDHKbCxnxS">
+    <mxGraphModel dx="1414" dy="897" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-4" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="g7sR5BpMYF92y9t7T4uF-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Literature review&lt;/b&gt;&lt;div&gt;Compile existing auth schemes&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="230" x="110" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;b&gt;Schemes&#39; summary&lt;/b&gt;&lt;/div&gt;&lt;div&gt;Catalogue of auth approaches&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="230" x="480" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-10" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g7sR5BpMYF92y9t7T4uF-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="570" y="320" />
+              <mxPoint x="570" y="320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Human usability factor analysis&lt;/b&gt;&lt;div&gt;Identify weak decision-making behaviours that enable spoofing&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="600" x="110" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-6" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.808;entryY=-0.033;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Scheme comparison&lt;/b&gt;&lt;div&gt;Evaluate multiple auth methods against usable security gaps&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="280" x="110" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;New/improved scheme&lt;/b&gt;&lt;div&gt;Design or refine auth methods to close human-factor gaps&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="280" x="430" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-9" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.471;entryY=0.05;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-7">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="242" y="310" />
+              <mxPoint x="242" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-18" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="430" y="530" />
+              <mxPoint x="430" y="530" />
+            </Array>
+            <mxPoint x="430" y="590" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Testing on authentication object&lt;/b&gt;&lt;div&gt;Apply schemes to a real auth target -- record test results&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="600" x="110" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-17" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="g7sR5BpMYF92y9t7T4uF-14" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Suggestions analysis&lt;/b&gt;&lt;div&gt;Extract improvements from test results on auth object&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="300" x="110" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Anti-phishing guidelines&lt;/b&gt;&lt;div&gt;&lt;b&gt;A&lt;/b&gt;ctionable rules to reduce human-factor spoofing risk&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="260" x="460" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-21" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.768;entryY=0.017;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-22" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.233;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
