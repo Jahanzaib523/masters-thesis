@@ -5,16 +5,16 @@
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="ifuXSFKZKQ3-LNJSYQZK-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
-          <mxGeometry height="550" width="660" x="80" y="100" as="geometry" />
+          <mxGeometry height="540" width="720" x="80" y="110" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-4" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="g7sR5BpMYF92y9t7T4uF-3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Literature review&lt;/b&gt;&lt;div&gt;Compile existing auth schemes&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="230" x="110" y="130" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Literature review&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Compile existing auth schemes&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="310" x="110" y="130" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;b&gt;Schemes&#39; summary&lt;/b&gt;&lt;/div&gt;&lt;div&gt;Catalogue of auth approaches&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="230" x="480" y="130" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Schemes&#39; summary&lt;/font&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Catalogue of auth approaches&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="320" x="460" y="130" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-10" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g7sR5BpMYF92y9t7T4uF-8">
           <mxGeometry relative="1" as="geometry">
@@ -24,17 +24,17 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Human usability factor analysis&lt;/b&gt;&lt;div&gt;Identify weak decision-making behaviours that enable spoofing&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="600" x="110" y="240" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Human usability factor analysis&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Identify weak decision-making behaviours that enable spoofing&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="660" x="110" y="240" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-6" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.808;entryY=-0.033;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-5">
+        <mxCell id="sj56_2wxmPPFWr87vKHw-1" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="g7sR5BpMYF92y9t7T4uF-8">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Scheme comparison&lt;/b&gt;&lt;div&gt;Evaluate multiple auth methods against usable security gaps&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="280" x="110" y="350" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Scheme comparison&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Evaluate multiple auth methods against usable security gaps&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="330" x="90" y="350" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;New/improved scheme&lt;/b&gt;&lt;div&gt;Design or refine auth methods to close human-factor gaps&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="280" x="430" y="350" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;New/improved scheme&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Design or refine auth methods to close human-factor gaps&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="310" x="460" y="350" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-9" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.471;entryY=0.05;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-7">
           <mxGeometry relative="1" as="geometry">
@@ -53,22 +53,22 @@
             <mxPoint x="430" y="590" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Testing on authentication object&lt;/b&gt;&lt;div&gt;Apply schemes to a real auth target -- record test results&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="600" x="110" y="450" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Testing on authentication object&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Apply schemes to a real auth target -- record test results&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="660" x="110" y="450" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-17" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="g7sR5BpMYF92y9t7T4uF-14" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Suggestions analysis&lt;/b&gt;&lt;div&gt;Extract improvements from test results on auth object&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="300" x="110" y="560" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Suggestions analysis&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Extract improvements from test results on auth object&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="310" x="110" y="560" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;Anti-phishing guidelines&lt;/b&gt;&lt;div&gt;&lt;b&gt;A&lt;/b&gt;ctionable rules to reduce human-factor spoofing risk&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="260" x="460" y="560" as="geometry" />
+        <mxCell id="g7sR5BpMYF92y9t7T4uF-14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Anti-phishing guidelines&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;&lt;b&gt;A&lt;/b&gt;ctionable rules to reduce human-factor spoofing risk&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="280" x="490" y="560" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-21" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.768;entryY=0.017;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-11">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-22" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.233;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-11">
+        <mxCell id="sj56_2wxmPPFWr87vKHw-2" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.774;entryY=0.029;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-5">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
