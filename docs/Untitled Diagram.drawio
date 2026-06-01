@@ -16,11 +16,11 @@
         <mxCell id="g7sR5BpMYF92y9t7T4uF-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Schemes&#39; summary&lt;/font&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Catalogue of auth approaches&lt;/font&gt;&lt;/div&gt;" vertex="1">
           <mxGeometry height="60" width="320" x="460" y="130" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-10" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g7sR5BpMYF92y9t7T4uF-8">
+        <mxCell id="sj56_2wxmPPFWr87vKHw-3" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g7sR5BpMYF92y9t7T4uF-8">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="570" y="320" />
-              <mxPoint x="570" y="320" />
+              <mxPoint x="615" y="320" />
+              <mxPoint x="615" y="320" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -31,7 +31,7 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Scheme comparison&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Evaluate multiple auth methods against usable security gaps&lt;/font&gt;&lt;/div&gt;" vertex="1">
-          <mxGeometry height="70" width="330" x="90" y="350" as="geometry" />
+          <mxGeometry height="70" width="310" x="110" y="350" as="geometry" />
         </mxCell>
         <mxCell id="g7sR5BpMYF92y9t7T4uF-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;New/improved scheme&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;Design or refine auth methods to close human-factor gaps&lt;/font&gt;&lt;/div&gt;" vertex="1">
           <mxGeometry height="70" width="310" x="460" y="350" as="geometry" />
@@ -65,10 +65,10 @@
         <mxCell id="g7sR5BpMYF92y9t7T4uF-14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Anti-phishing guidelines&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font size=&quot;3&quot;&gt;&lt;b&gt;A&lt;/b&gt;ctionable rules to reduce human-factor spoofing risk&lt;/font&gt;&lt;/div&gt;" vertex="1">
           <mxGeometry height="70" width="280" x="490" y="560" as="geometry" />
         </mxCell>
-        <mxCell id="g7sR5BpMYF92y9t7T4uF-21" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.768;entryY=0.017;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-11">
+        <mxCell id="sj56_2wxmPPFWr87vKHw-4" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.765;entryY=0.033;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-11">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="sj56_2wxmPPFWr87vKHw-2" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.774;entryY=0.029;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-5">
+        <mxCell id="sj56_2wxmPPFWr87vKHw-5" edge="1" parent="1" source="g7sR5BpMYF92y9t7T4uF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.774;entryY=0.029;entryDx=0;entryDy=0;entryPerimeter=0;" target="g7sR5BpMYF92y9t7T4uF-5">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
